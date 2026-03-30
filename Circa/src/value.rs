@@ -1,0 +1,71 @@
+use std::fmt;
+use crate::ast::Stmt;
+
+/// Runtime value in Circa.
+#[derive(Debug, Clone)]
+pub enum Value {
+    /// A number with an optional tolerance.
+    Number {
+        val: f32,
+        tol: Option<f32>,
+    },
+    Bool(bool),
+    /// A user-defined function (captures param names + body).
+    Func {
+        name: String,
+        params: Vec<String>,
+        body: Vec<Stmt>,
+        guarantees_tol: bool,
+    },
+}
+
+impl Value {
+    pub fn number(val: f32) -> Self {
+        Value::Number { val, tol: None }
+    }
+
+    pub fn number_with_tol(val: f32, tol: f32) -> Self {
+        Value::Number { val, tol: Some(tol) }
+    }
+
+    /// Approximate equality: |a - b| <= tolerance.
+    /// Uses the tolerance from `other` if it has one (the RHS in `==`),
+    /// otherwise falls back to `self`'s tolerance, otherwise exact.
+    pub fn approx_eq(&self, other: &Value) -> Option<bool> {
+        match (self, other) {
+            (Value::Number { val: a, tol: tol_a }, Value::Number { val: b, tol: tol_b }) => {
+                let tolerance = tol_b.or(*tol_a).unwrap_or(0.0);
+                Some((a - b).abs() <= tolerance)
+            }
+            (Value::Bool(a), Value::Bool(b)) => Some(a == b),
+            _ => None,
+        }
+    }
+
+    pub fn as_f32(&self) -> Option<f32> {
+        match self {
+            Value::Number { val, .. } => Some(*val),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Value::Bool(b) => Some(*b),
+            // Truthy: non-zero numbers
+            Value::Number { val, .. } => Some(*val != 0.0),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Number { val, tol: Some(t) } => write!(f, "{} ~= {}", val, t),
+            Value::Number { val, tol: None } => write!(f, "{}", val),
+            Value::Bool(b) => write!(f, "{}", if *b { "True" } else { "False" }),
+            Value::Func { name, .. } => write!(f, "<fn {}>", name),
+        }
+    }
+}

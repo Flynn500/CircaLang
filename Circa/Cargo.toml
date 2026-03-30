@@ -1,0 +1,8 @@
+[package]
+name = "circa"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chumsky = { version = "0.9", default-features = false, features = ["std", "ahash"] }
+logos = "0.13"
