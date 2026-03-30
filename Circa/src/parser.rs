@@ -176,8 +176,9 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
         .map(Stmt::Print);
 
     // Block and statement are mutually recursive (if/fn contain blocks of stmts)
+    let nl_leading = nl.clone();
     let nl2 = nl.clone();
-    recursive(move |stmt: Recursive<'_, Token, Stmt, Simple<Token>>| {
+    nl_leading.ignore_then(recursive(move |stmt: Recursive<'_, Token, Stmt, Simple<Token>>| {
         let block = nl
             .clone()
             .ignore_then(stmt.clone())
@@ -210,13 +211,27 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                     .delimited_by(just(Token::LParen), just(Token::RParen)),
             )
             .then(just(Token::TolCall).or_not())
-            .then(block)
+            .then(block.clone())
             .map(|(((name, params), has_tol), body)| Stmt::FnDef {
                 name,
                 params,
                 body,
                 guarantees_tol: has_tol.is_some(),
             });
+
+        // loop { body }
+        let loop_stmt = just(Token::Loop)
+            .ignore_then(block.clone())
+            .map(|body| Stmt::Loop { body });
+
+        // break
+        let break_stmt = just(Token::Break).map(|_| Stmt::Break);
+
+        // name = expr  (reassignment, no `let`)
+        let assign_stmt = select! { Token::Ident(s) => s }
+            .then_ignore(just(Token::Assign))
+            .then(expr.clone())
+            .map(|(name, value)| Stmt::Assign { name, value });
 
         let expr_stmt = expr
             .clone()
@@ -228,10 +243,14 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             .or(print_stmt.clone())
             .or(if_stmt)
             .or(fn_def)
+            .or(loop_stmt)
+            .or(break_stmt)
+            .or(assign_stmt)
             .or(expr_stmt)
     })
     .then_ignore(nl2.clone())
     .repeated()
+    )
     .then_ignore(nl2)
     .then_ignore(end())
 }

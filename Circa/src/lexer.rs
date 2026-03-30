@@ -41,6 +41,10 @@ pub enum Token {
     Print,
     #[token("tol")]
     Tol,
+    #[token("loop")]
+    Loop,
+    #[token("break")]
+    Break,
 
     // Literals
     #[regex(r"[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?", |lex| lex.slice().parse::<f64>().ok().map(F64))]

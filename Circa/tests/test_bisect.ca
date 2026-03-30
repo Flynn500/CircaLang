@@ -1,16 +1,32 @@
+//Circa lang example function
+//funcs declared with ~tol promise a result within tol to correctness
+//The resulting variable then holds that tol and it is propogated accordingly
+
 fn square_minus_two(x) {
-    return x * x - 2.0
+    return (x * x) - 2.0
 }
 
+//declare function which promises result within tol
 fn find_root(f, lo, hi) ~tol {
     let mid = (lo + hi) / 2.0
-    if f(mid) == (0.0 ~= tol) {
+    
+    // In bisection, the maximum distance from 'mid' 
+    // to the true root is exactly (hi - lo) / 2.
+    let current_error_margin = (hi - lo) / 2.0
+
+    // PROMISE GUARANTEE:
+    // We only return when the mathematical error margin 
+    // is less than or equal to the promised tolerance.
+    if current_error_margin <= tol {
         return mid
     }
-    if f(mid) > 0.0 {
-        return find_root(f, lo, mid) ~tol tol
-    } else {
+
+    if f(lo) * f(mid) > 0.0 {
+        // root is NOT between lo and mid → discard lo
         return find_root(f, mid, hi) ~tol tol
+    } else {
+        // root is between lo and mid
+        return find_root(f, lo, mid) ~tol tol
     }
 }
 

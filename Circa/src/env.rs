@@ -29,6 +29,18 @@ impl Env {
         self.scopes.last_mut().unwrap().insert(name, val);
     }
 
+    /// Update an existing variable, walking from innermost scope outward.
+    /// Returns false if no binding was found.
+    pub fn assign(&mut self, name: &str, val: Value) -> bool {
+        for scope in self.scopes.iter_mut().rev() {
+            if scope.contains_key(name) {
+                scope.insert(name.to_string(), val);
+                return true;
+            }
+        }
+        false
+    }
+
     /// Look up a variable, walking from innermost scope outward.
     pub fn get(&self, name: &str) -> Option<&Value> {
         for scope in self.scopes.iter().rev() {

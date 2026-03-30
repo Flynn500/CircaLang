@@ -35,6 +35,18 @@ pub enum Stmt {
     /// `print(expr)`
     Print(Expr),
 
+    /// `a = expr` — reassign an existing variable
+    Assign {
+        name: String,
+        value: Expr,
+    },
+
+    /// `loop { body }` — runs forever until a `break` is hit
+    Loop { body: Vec<Stmt> },
+
+    /// `break` — exits the innermost loop
+    Break,
+
     /// An expression used as a statement (e.g. a bare function call)
     ExprStmt(Expr),
 }

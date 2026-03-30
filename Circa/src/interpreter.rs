@@ -6,6 +6,8 @@ use crate::value::Value;
 enum Signal {
     /// A return statement was hit.
     Return(Value),
+    /// A break statement was hit.
+    Break,
 }
 
 pub struct Interpreter {
@@ -20,8 +22,10 @@ impl Interpreter {
     /// Run a full program.
     pub fn run(&mut self, program: &Program) -> Result<(), String> {
         for stmt in program {
-            if let Some(_signal) = self.exec_stmt(stmt)? {
-                return Err("return outside of function".into());
+            match self.exec_stmt(stmt)? {
+                Some(Signal::Return(_)) => return Err("return outside of function".into()),
+                Some(Signal::Break) => return Err("break outside of loop".into()),
+                None => {}
             }
         }
         Ok(())
@@ -52,6 +56,14 @@ impl Interpreter {
                 };
 
                 self.env.define(name.clone(), result);
+                Ok(None)
+            }
+
+            Stmt::Assign { name, value } => {
+                let result = self.eval_expr(value)?;
+                if !self.env.assign(name, result) {
+                    return Err(format!("undefined variable: {}", name));
+                }
                 Ok(None)
             }
 
@@ -100,6 +112,31 @@ impl Interpreter {
                 println!("{}", val);
                 Ok(None)
             }
+
+            Stmt::Loop { body } => {
+                loop {
+                    self.env.push_scope();
+                    let mut broke = false;
+                    for s in body {
+                        match self.exec_stmt(s)? {
+                            Some(Signal::Break) => {
+                                broke = true;
+                                break;
+                            }
+                            Some(sig) => {
+                                self.env.pop_scope();
+                                return Ok(Some(sig));
+                            }
+                            None => {}
+                        }
+                    }
+                    self.env.pop_scope();
+                    if broke { break; }
+                }
+                Ok(None)
+            }
+
+            Stmt::Break => Ok(Some(Signal::Break)),
 
             Stmt::ExprStmt(expr) => {
                 self.eval_expr(expr)?;
@@ -194,6 +231,13 @@ impl Interpreter {
                     ));
                 }
 
+                if caller_tol.is_some() && !guarantees_tol {
+                    return Err(format!(
+                        "{}: does not accept a tolerance argument (~tol not in signature)",
+                        name
+                    ));
+                }
+
                 self.env.push_scope();
 
                 // Bind parameters
@@ -201,9 +245,11 @@ impl Interpreter {
                     self.env.define(param.clone(), arg);
                 }
 
-                // Always inject tol: caller-provided or default 0.0 (exact)
-                let tol_f32 = caller_tol.unwrap_or(0.0);
-                self.env.define("tol".into(), Value::number(tol_f32));
+                // Inject tol only for functions that declare ~tol
+                if guarantees_tol {
+                    let tol_f32 = caller_tol.unwrap_or(0.0);
+                    self.env.define("tol".into(), Value::number(tol_f32));
+                }
 
                 // Execute body
                 let mut result = Value::Bool(false); // default return
@@ -212,6 +258,9 @@ impl Interpreter {
                         Some(Signal::Return(val)) => {
                             result = val;
                             break;
+                        }
+                        Some(Signal::Break) => {
+                            return Err("break outside of loop".into());
                         }
                         None => {}
                     }
