@@ -1,51 +1,46 @@
-use std::collections::HashMap;
 use crate::value::Value;
 
-/// A stack of scopes. Lookup walks from innermost to outermost.
 #[derive(Debug, Clone)]
 pub struct Env {
-    scopes: Vec<HashMap<String, Value>>,
+    entries: Vec<(String, Value)>,
+    scope_starts: Vec<usize>,
 }
 
 impl Env {
     pub fn new() -> Self {
         Env {
-            scopes: vec![HashMap::new()],
+            entries: Vec::new(),
+            scope_starts: vec![0],
         }
     }
 
-    /// Push a new scope (e.g. entering a function or block).
     pub fn push_scope(&mut self) {
-        self.scopes.push(HashMap::new());
+        self.scope_starts.push(self.entries.len());
     }
 
-    /// Pop the innermost scope.
     pub fn pop_scope(&mut self) {
-        self.scopes.pop();
+        let start = self.scope_starts.pop().expect("cannot pop global scope");
+        self.entries.truncate(start);
     }
 
-    /// Define a variable in the current (innermost) scope.
     pub fn define(&mut self, name: String, val: Value) {
-        self.scopes.last_mut().unwrap().insert(name, val);
+        self.entries.push((name, val));
     }
 
-    /// Update an existing variable, walking from innermost scope outward.
-    /// Returns false if no binding was found.
     pub fn assign(&mut self, name: &str, val: Value) -> bool {
-        for scope in self.scopes.iter_mut().rev() {
-            if scope.contains_key(name) {
-                scope.insert(name.to_string(), val);
+        for entry in self.entries.iter_mut().rev() {
+            if entry.0 == name {
+                entry.1 = val;
                 return true;
             }
         }
         false
     }
 
-    /// Look up a variable, walking from innermost scope outward.
     pub fn get(&self, name: &str) -> Option<&Value> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(v) = scope.get(name) {
-                return Some(v);
+        for entry in self.entries.iter().rev() {
+            if entry.0 == name {
+                return Some(&entry.1);
             }
         }
         None

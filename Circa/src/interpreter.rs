@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::ast::*;
 use crate::builtins;
 use crate::env::Env;
@@ -72,9 +74,9 @@ impl Interpreter {
 
             Stmt::FnDef { name, params, body, guarantees_tol } => {
                 let func = Value::Func {
-                    name: name.clone(),
-                    params: params.clone(),
-                    body: body.clone(),
+                    name: Rc::from(name.as_str()),
+                    params: Rc::from(params.as_slice()),
+                    body: Rc::from(body.as_slice()),
                     guarantees_tol: *guarantees_tol,
                 };
                 self.env.define(name.clone(), func);
@@ -194,9 +196,9 @@ impl Interpreter {
 
             Expr::Lambda { params, body, guarantees_tol } => {
                 Ok(Value::Func {
-                    name: "<lambda>".to_string(),
-                    params: params.clone(),
-                    body: body.clone(),
+                    name: Rc::from("<lambda>"),
+                    params: Rc::from(params.as_slice()),
+                    body: Rc::from(body.as_slice()),
                     guarantees_tol: *guarantees_tol,
                 })
             }
@@ -211,6 +213,38 @@ impl Interpreter {
                     Value::Number { val, .. } => Ok(Value::number_with_tol(val, tol_f32)),
                     _ => Err("cannot apply tolerance to non-number".into()),
                 }
+            }
+
+            Expr::VecLiteral(elements) => {
+                let values = elements
+                    .iter()
+                    .map(|e| self.eval_expr(e))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Value::Vector(values))
+            }
+
+            Expr::Index { vec, index } => {
+                let vec_val = self.eval_expr(vec)?;
+                let idx_val = self.eval_expr(index)?;
+
+                let elems = match vec_val {
+                    Value::Vector(v) => v,
+                    other => return Err(format!("cannot index into {}", other)),
+                };
+
+                let idx_f = idx_val
+                    .as_f32()
+                    .ok_or_else(|| "index must be a number".to_string())?;
+
+                if idx_f < 0.0 {
+                    return Err(format!("index {} is negative", idx_f));
+                }
+
+                let idx = idx_f as usize;
+                let len = elems.len();
+                elems.get(idx)
+                    .cloned()
+                    .ok_or_else(|| format!("index {} out of bounds (len {})", idx, len))
             }
         }
     }
@@ -259,7 +293,7 @@ impl Interpreter {
 
                 // Execute body
                 let mut result = Value::Bool(false); // default return
-                for s in &body {
+                for s in body.iter() {
                     match self.exec_stmt(s)? {
                         Some(Signal::Return(val)) => {
                             result = val;

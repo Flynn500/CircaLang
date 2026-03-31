@@ -96,6 +96,16 @@ pub enum Expr {
         body: Vec<Stmt>,
         guarantees_tol: bool,
     },
+
+    /// Vector literal: `[e1, e2, e3]`
+    /// Each element may be a `WithTolerance` node if written as `e ~= tol`.
+    VecLiteral(Vec<Expr>),
+
+    /// Index into a vector: `v[i]`
+    Index {
+        vec: Box<Expr>,
+        index: Box<Expr>,
+    },
 }
 
 #[derive(Debug, Clone)]

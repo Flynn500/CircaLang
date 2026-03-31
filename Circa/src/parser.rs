@@ -51,6 +51,13 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
 
     // Step 3: build expr WITH lambda support (lambda uses block).
     let block_for_expr = block.clone();
+
+    // Used in the postfix fold to distinguish call vs index suffixes.
+    enum PostfixOp {
+        Call(Vec<Expr>, Option<Expr>),
+        Index(Expr),
+    }
+
     let expr = recursive(move |expr| {
         let number = select! { Token::Number(n) => Expr::Number(n.0) };
         let boolean = select! {
@@ -93,12 +100,35 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                 None => value,
             });
 
+        // Vector literal: `[elem, ...]` where each elem can be `expr` or `expr ~= tol`
+        let vec_element = expr
+            .clone()
+            .then(
+                just(Token::TolAssign)
+                    .ignore_then(expr.clone())
+                    .or_not(),
+            )
+            .map(|(value, tol)| match tol {
+                Some(t) => Expr::WithTolerance {
+                    value: Box::new(value),
+                    tolerance: Box::new(t),
+                },
+                None => value,
+            });
+
+        let vec_literal = vec_element
+            .separated_by(just(Token::Comma))
+            .allow_trailing()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(Expr::VecLiteral);
+
         let atom = number
             .or(boolean)
             .or(tol_kw)
             .or(lambda)
             .or(ident)
-            .or(paren_expr);
+            .or(paren_expr)
+            .or(vec_literal);
 
         // Unary negation
         let unary = just(Token::Minus)
@@ -116,19 +146,31 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             .allow_trailing()
             .delimited_by(just(Token::LParen), just(Token::RParen));
 
-        let call = unary
+        let call_suffix = args
             .then(
-                args.then(
-                    just(Token::TolCall)
-                        .ignore_then(expr.clone())
-                        .or_not(),
-                )
-                .repeated(),
+                just(Token::TolCall)
+                    .ignore_then(expr.clone())
+                    .or_not(),
             )
-            .foldl(|func, (args, tol)| Expr::Call {
-                func: Box::new(func),
-                args,
-                tolerance: tol.map(Box::new),
+            .map(|(a, tol)| PostfixOp::Call(a, tol));
+
+        let index_suffix = expr
+            .clone()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(PostfixOp::Index);
+
+        let postfixed = unary
+            .then(call_suffix.or(index_suffix).repeated())
+            .foldl(|base, op| match op {
+                PostfixOp::Call(args, tol) => Expr::Call {
+                    func: Box::new(base),
+                    args,
+                    tolerance: tol.map(Box::new),
+                },
+                PostfixOp::Index(idx) => Expr::Index {
+                    vec: Box::new(base),
+                    index: Box::new(idx),
+                },
             });
 
         // Mul / Div
@@ -136,9 +178,9 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             .to(BinOp::Mul)
             .or(just(Token::Slash).to(BinOp::Div));
 
-        let product = call
+        let product = postfixed
             .clone()
-            .then(op.then(call).repeated())
+            .then(op.then(postfixed).repeated())
             .foldl(|left, (op, right)| Expr::BinOp {
                 left: Box::new(left),
                 op,

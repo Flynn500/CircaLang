@@ -1,0 +1,82 @@
+// === Stress test: tight loop with arithmetic ===
+fn count_loop(n) {
+    let i = 0.0
+    let acc = 0.0
+    loop {
+        if i >= n {
+            return acc
+        }
+        acc = acc + i * 0.5
+        i = i + 1.0
+    }
+}
+
+// === Stress test: recursive-ish repeated function calls ===
+fn add_one(x) {
+    return x + 1.0
+}
+
+fn call_chain(n) {
+    let x = 0.0
+    let i = 0.0
+    loop {
+        if i >= n {
+            return x
+        }
+        x = add_one(x)
+        i = i + 1.0
+    }
+}
+
+// === Stress test: tolerance propagation through arithmetic ===
+fn tol_arithmetic(n) {
+    let x = 1.0 ~= 0.001
+    let i = 0.0
+    loop {
+        if i >= n {
+            return x
+        }
+        x = x + x
+        x = x * 1.0
+        i = i + 1.0
+    }
+}
+
+// === Stress test: function with ~tol signature (scope injection) ===
+fn approx_id(x) ~tol {
+    return x
+}
+
+fn tol_call_loop(n) {
+    let i = 0.0
+    loop {
+        if i >= n {
+            return i
+        }
+        let r = approx_id(1.0) ~tol 0.01
+        i = i + 1.0
+    }
+}
+
+// === Stress test: vector creation and indexing ===
+fn vec_work(n) {
+    let i = 0.0
+    let acc = 0.0
+    loop {
+        if i >= n {
+            return acc
+        }
+        let v = [1.0, 2.0, 3.0, 4.0, 5.0]
+        acc = acc + v[0] + v[4]
+        i = i + 1.0
+    }
+}
+
+// === Run everything ===
+let N = 10000.0
+
+print(count_loop(N))
+print(call_chain(N))
+print(tol_arithmetic(N))
+print(tol_call_loop(N))
+print(vec_work(N))

@@ -8,6 +8,7 @@ pub fn register_builtins(env: &mut Env) {
         ("panic",     1, builtin_panic,     false),
         ("print",     1, builtin_print,     false),
         ("snap",      1, builtin_snap,      false),
+        ("len",       1, builtin_len,       false),
     ];
 
     for &(name, arity, func, guarantees_tol) in builtins {
@@ -35,5 +36,12 @@ fn builtin_snap(args: &[Value], _caller_tol: Option<f32>) -> Result<Value, Strin
     match &args[0] {
         Value::Number { val, .. } => Ok(Value::number(*val)),
         other => Err(format!("snap: expected a number, got {}", other)),
+    }
+}
+
+fn builtin_len(args: &[Value], _caller_tol: Option<f32>) -> Result<Value, String> {
+    match &args[0] {
+        Value::Vector(elems) => Ok(Value::number(elems.len() as f32)),
+        other => Err(format!("len: expected a vector, got {}", other)),
     }
 }
