@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::builtins;
 use crate::env::Env;
 use crate::value::Value;
 
@@ -16,7 +17,9 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
-        Interpreter { env: Env::new() }
+        let mut env = Env::new();
+        builtins::register_builtins(&mut env);
+        Interpreter { env }
     }
 
     /// Run a full program.
@@ -107,12 +110,6 @@ impl Interpreter {
                 Ok(None)
             }
 
-            Stmt::Print(expr) => {
-                let val = self.eval_expr(expr)?;
-                println!("{}", val);
-                Ok(None)
-            }
-
             Stmt::Loop { body } => {
                 loop {
                     self.env.push_scope();
@@ -195,6 +192,15 @@ impl Interpreter {
                 self.eval_call(func, args, caller_tol)
             }
 
+            Expr::Lambda { params, body, guarantees_tol } => {
+                Ok(Value::Func {
+                    name: "<lambda>".to_string(),
+                    params: params.clone(),
+                    body: body.clone(),
+                    guarantees_tol: *guarantees_tol,
+                })
+            }
+
             Expr::WithTolerance { value, tolerance } => {
                 let val = self.eval_expr(value)?;
                 let tol = self.eval_expr(tolerance)?;
@@ -270,6 +276,34 @@ impl Interpreter {
 
                 // If the function guarantees tol (~= tol signature),
                 // tag the return value with the caller's tolerance.
+                if guarantees_tol {
+                    if let Some(t) = caller_tol {
+                        result = match result {
+                            Value::Number { val, .. } => Value::number_with_tol(val, t),
+                            other => other,
+                        };
+                    }
+                }
+
+                Ok(result)
+            }
+            Value::NativeFunc { name, arity, func, guarantees_tol } => {
+                if args.len() != arity {
+                    return Err(format!(
+                        "{}: expected {} args, got {}",
+                        name, arity, args.len()
+                    ));
+                }
+
+                if caller_tol.is_some() && !guarantees_tol {
+                    return Err(format!(
+                        "{}: does not accept a tolerance argument (~tol not in signature)",
+                        name
+                    ));
+                }
+
+                let mut result = func(&args, caller_tol)?;
+
                 if guarantees_tol {
                     if let Some(t) = caller_tol {
                         result = match result {

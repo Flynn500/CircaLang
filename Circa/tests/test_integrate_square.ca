@@ -21,11 +21,7 @@ fn integrate_square(a, b) ~tol {
     return sum * h
 }
 
-let rough = integrate_square(0.0, 3.0) ~tol 0.1
-print(rough)
 
-let fine = integrate_square(0.0, 3.0) ~tol 0.01
-print(fine)
 
 let precise = integrate_square(0.0, 3.0) ~tol 0.001
 print(precise)

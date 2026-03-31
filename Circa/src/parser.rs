@@ -27,16 +27,54 @@ pub fn lex(src: &str) -> Result<Vec<Spanned>, Vec<Simple<char>>> {
     Ok(tokens)
 }
 
-/// Build the expression parser.
-fn expr_parser() -> impl Parser<Token, Expr, Error = Simple<Token>> + Clone {
-    recursive(|expr| {
+/// Build the full program parser (statements + expressions with mutual recursion).
+///
+/// expr and stmt are mutually recursive because lambda expressions (`fn(x) { body }`)
+/// appear in expression position but contain statement blocks.
+/// We use `Recursive::declare()` to break the cycle: declare stmt first, build block
+/// and expr from it, then define stmt using the completed expr.
+fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
+    let nl = just(Token::Newline).repeated();
+
+    // Step 1: declare stmt so block can reference it before stmt is defined.
+    let mut stmt_rec: Recursive<Token, Stmt, Simple<Token>> = Recursive::declare();
+
+    // Step 2: build block from the declared stmt.
+    let block = {
+        let nl_b = nl.clone();
+        let nl_b2 = nl.clone();
+        nl_b.ignore_then(stmt_rec.clone())
+            .then_ignore(nl_b2)
+            .repeated()
+            .delimited_by(just(Token::LBrace), just(Token::RBrace))
+    };
+
+    // Step 3: build expr WITH lambda support (lambda uses block).
+    let block_for_expr = block.clone();
+    let expr = recursive(move |expr| {
         let number = select! { Token::Number(n) => Expr::Number(n.0) };
         let boolean = select! {
             Token::True => Expr::Bool(true),
             Token::False => Expr::Bool(false),
         };
         let ident = select! { Token::Ident(s) => Expr::Ident(s) };
-        let tol = just(Token::Tol).to(Expr::Tol);
+        let tol_kw = just(Token::Tol).to(Expr::Tol);
+
+        // Lambda: `fn(params) { body }` or `fn(params) ~tol { body }`
+        let lambda = just(Token::Fn)
+            .ignore_then(
+                select! { Token::Ident(s) => s }
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+            )
+            .then(just(Token::TolCall).or_not())
+            .then(block_for_expr.clone())
+            .map(|((params, has_tol), body)| Expr::Lambda {
+                params,
+                body,
+                guarantees_tol: has_tol.is_some(),
+            });
 
         // Parenthesised expr, also handles `(value ~= tolerance)`
         let paren_expr = expr
@@ -57,7 +95,8 @@ fn expr_parser() -> impl Parser<Token, Expr, Error = Simple<Token>> + Clone {
 
         let atom = number
             .or(boolean)
-            .or(tol)
+            .or(tol_kw)
+            .or(lambda)
             .or(ident)
             .or(paren_expr);
 
@@ -70,7 +109,7 @@ fn expr_parser() -> impl Parser<Token, Expr, Error = Simple<Token>> + Clone {
                 expr: Box::new(rhs),
             });
 
-        // Function calls: `expr(args)` with optional `~= tol`
+        // Function calls: `expr(args)` with optional `~tol expr`
         let args = expr
             .clone()
             .separated_by(just(Token::Comma))
@@ -138,13 +177,9 @@ fn expr_parser() -> impl Parser<Token, Expr, Error = Simple<Token>> + Clone {
                 },
                 None => left,
             })
-    })
-}
+    });
 
-/// Build the full program parser (statements).
-fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
-    let expr = expr_parser();
-    let nl = just(Token::Newline).repeated();
+    // Step 4: build all statement parsers using expr and block, then define stmt_rec.
 
     // let name = expr  OR  let name = expr ~= tol
     let let_stmt = just(Token::Let)
@@ -156,100 +191,79 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                 .ignore_then(expr.clone())
                 .or_not(),
         )
-        .map(|((name, value), tolerance)| Stmt::Let {
-            name,
-            value,
-            tolerance,
-        });
+        .map(|((name, value), tolerance)| Stmt::Let { name, value, tolerance });
 
     // return expr
     let return_stmt = just(Token::Return)
         .ignore_then(expr.clone())
         .map(|value| Stmt::Return { value });
 
-    // print(expr)
-    let print_stmt = just(Token::Print)
-        .ignore_then(
-            expr.clone()
+    // if cond { body } [else { body }]
+    let if_stmt = just(Token::If)
+        .ignore_then(expr.clone())
+        .then(block.clone())
+        .then(
+            just(Token::Else)
+                .ignore_then(block.clone())
+                .or_not(),
+        )
+        .map(|((condition, then_body), else_body)| Stmt::If {
+            condition,
+            then_body,
+            else_body,
+        });
+
+    // fn name(params) { body }  OR  fn name(params) ~tol { body }
+    let fn_def = just(Token::Fn)
+        .ignore_then(select! { Token::Ident(s) => s })
+        .then(
+            select! { Token::Ident(s) => s }
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
                 .delimited_by(just(Token::LParen), just(Token::RParen)),
         )
-        .map(Stmt::Print);
+        .then(just(Token::TolCall).or_not())
+        .then(block.clone())
+        .map(|(((name, params), has_tol), body)| Stmt::FnDef {
+            name,
+            params,
+            body,
+            guarantees_tol: has_tol.is_some(),
+        });
 
-    // Block and statement are mutually recursive (if/fn contain blocks of stmts)
-    let nl_leading = nl.clone();
-    let nl2 = nl.clone();
-    nl_leading.ignore_then(recursive(move |stmt: Recursive<'_, Token, Stmt, Simple<Token>>| {
-        let block = nl
-            .clone()
-            .ignore_then(stmt.clone())
-            .then_ignore(nl.clone())
-            .repeated()
-            .delimited_by(just(Token::LBrace), just(Token::RBrace));
+    // loop { body }
+    let loop_stmt = just(Token::Loop)
+        .ignore_then(block)
+        .map(|body| Stmt::Loop { body });
 
-        // if cond { body } [else { body }]
-        let if_stmt = just(Token::If)
-            .ignore_then(expr.clone())
-            .then(block.clone())
-            .then(
-                just(Token::Else)
-                    .ignore_then(block.clone())
-                    .or_not(),
-            )
-            .map(|((condition, then_body), else_body)| Stmt::If {
-                condition,
-                then_body,
-                else_body,
-            });
+    // break
+    let break_stmt = just(Token::Break).map(|_| Stmt::Break);
 
-        // fn name(params) { body }  OR  fn name(params) ~tol { body }
-        let fn_def = just(Token::Fn)
-            .ignore_then(select! { Token::Ident(s) => s })
-            .then(
-                select! { Token::Ident(s) => s }
-                    .separated_by(just(Token::Comma))
-                    .allow_trailing()
-                    .delimited_by(just(Token::LParen), just(Token::RParen)),
-            )
-            .then(just(Token::TolCall).or_not())
-            .then(block.clone())
-            .map(|(((name, params), has_tol), body)| Stmt::FnDef {
-                name,
-                params,
-                body,
-                guarantees_tol: has_tol.is_some(),
-            });
+    // name = expr  (reassignment, no `let`)
+    let assign_stmt = select! { Token::Ident(s) => s }
+        .then_ignore(just(Token::Assign))
+        .then(expr.clone())
+        .map(|(name, value)| Stmt::Assign { name, value });
 
-        // loop { body }
-        let loop_stmt = just(Token::Loop)
-            .ignore_then(block.clone())
-            .map(|body| Stmt::Loop { body });
+    let expr_stmt = expr.clone().map(Stmt::ExprStmt);
 
-        // break
-        let break_stmt = just(Token::Break).map(|_| Stmt::Break);
-
-        // name = expr  (reassignment, no `let`)
-        let assign_stmt = select! { Token::Ident(s) => s }
-            .then_ignore(just(Token::Assign))
-            .then(expr.clone())
-            .map(|(name, value)| Stmt::Assign { name, value });
-
-        let expr_stmt = expr
-            .clone()
-            .map(|value| Stmt::ExprStmt(value));
-
+    stmt_rec.define(
         let_stmt
-            .clone()
-            .or(return_stmt.clone())
-            .or(print_stmt.clone())
+            .or(return_stmt)
             .or(if_stmt)
             .or(fn_def)
             .or(loop_stmt)
             .or(break_stmt)
             .or(assign_stmt)
-            .or(expr_stmt)
-    })
-    .then_ignore(nl2.clone())
-    .repeated()
+            .or(expr_stmt),
+    );
+
+    // Step 5: full program = newline-separated statements.
+    let nl2 = nl.clone();
+    nl.ignore_then(
+        stmt_rec
+            .then_ignore(nl2.clone())
+            .repeated()
     )
     .then_ignore(nl2)
     .then_ignore(end())
@@ -314,9 +328,10 @@ mod tests {
 
     #[test]
     fn test_print() {
+        // print is now a builtin function, not a statement keyword
         let prog = parse_str("print(42)");
         assert_eq!(prog.len(), 1);
-        assert!(matches!(&prog[0], Stmt::Print(_)));
+        assert!(matches!(&prog[0], Stmt::ExprStmt(Expr::Call { .. })));
     }
 
     #[test]

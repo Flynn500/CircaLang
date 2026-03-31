@@ -32,9 +32,6 @@ pub enum Stmt {
         else_body: Option<Vec<Stmt>>,
     },
 
-    /// `print(expr)`
-    Print(Expr),
-
     /// `a = expr` — reassign an existing variable
     Assign {
         name: String,
@@ -91,6 +88,13 @@ pub enum Expr {
     WithTolerance {
         value: Box<Expr>,
         tolerance: Box<Expr>,
+    },
+
+    /// Anonymous function expression: `fn(params) { body }` or `fn(params) ~tol { body }`
+    Lambda {
+        params: Vec<String>,
+        body: Vec<Stmt>,
+        guarantees_tol: bool,
     },
 }
 

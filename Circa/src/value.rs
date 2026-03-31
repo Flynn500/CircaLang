@@ -1,6 +1,10 @@
 use std::fmt;
 use crate::ast::Stmt;
 
+/// Signature for a native (Rust-implemented) Circa function.
+/// The second argument is the caller-provided tolerance, if any.
+pub type NativeFn = fn(&[Value], Option<f32>) -> Result<Value, String>;
+
 /// Runtime value in Circa.
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -15,6 +19,13 @@ pub enum Value {
         name: String,
         params: Vec<String>,
         body: Vec<Stmt>,
+        guarantees_tol: bool,
+    },
+    /// A native (Rust-implemented) function.
+    NativeFunc {
+        name: &'static str,
+        arity: usize,
+        func: NativeFn,
         guarantees_tol: bool,
     },
 }
@@ -66,6 +77,7 @@ impl fmt::Display for Value {
             Value::Number { val, tol: None } => write!(f, "{}", val),
             Value::Bool(b) => write!(f, "{}", if *b { "True" } else { "False" }),
             Value::Func { name, .. } => write!(f, "<fn {}>", name),
+            Value::NativeFunc { name, .. } => write!(f, "<native fn {}>", name),
         }
     }
 }

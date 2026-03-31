@@ -1,6 +1,7 @@
 //Circa lang example function
-//funcs declared with ~tol promise a result within tol to correctness
-//The resulting variable then holds that tol and it is propogated accordingly
+//funcs declared with ~tol promise a result correct within tol
+//The resulting variable then holds that tol and it is propogated 
+//accordingly in future computations
 
 fn square_minus_two(x) {
     return (x * x) - 2.0
@@ -32,6 +33,14 @@ fn find_root(f, lo, hi) ~tol {
 
 let rough = find_root(square_minus_two, 0.0, 2.0) ~tol 0.1
 print(rough)
+print(tolerance(rough))
 
 let exact = find_root(square_minus_two, 0.0, 2.0) ~tol 0.001
 print(exact)
+print(tolerance(exact))
+
+//If you were to actually use a solver in pracitce:
+print(solve(square_minus_two, 0.0, 2.0) ~tol 0.1)
+print(solve(square_minus_two, 0.0, 2.0) ~tol 0.001)
+// the std lib will (ideally) have functions that handle tolerance promises correctly 
+

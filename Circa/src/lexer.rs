@@ -37,8 +37,6 @@ pub enum Token {
     True,
     #[token("false")]
     False,
-    #[token("print")]
-    Print,
     #[token("tol")]
     Tol,
     #[token("loop")]

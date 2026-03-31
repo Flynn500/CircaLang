@@ -1,0 +1,15 @@
+fn foo(x){
+    let a = 2 ~= 0.1
+    print(a)
+    return x * x
+}
+
+
+
+let x = 1 ~= 0.5
+x = foo(x)
+
+print(x)
+
+//should crash
+print(a)

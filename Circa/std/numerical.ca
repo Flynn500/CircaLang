@@ -1,0 +1,96 @@
+//find roots
+fn solve(f, a, b) ~tol {
+    let fa = f(a)
+    let fb = f(b)
+
+    // Ensure |f(b)| <= |f(a)| so 'b' is the best guess
+    if abs(fa) < abs(fb) {
+        // swap a, b
+        let tmp = a
+        a = b
+        b = tmp
+        let tmp2 = fa
+        fa = fb
+        fb = tmp2
+    }
+
+    let c = a       // contrapoint (previous best)
+    let fc = fa
+    let d = b - a   // last step size
+    let e = d       // step-before-last size
+    let mflag = 1.0 // 1.0 = last step was bisection
+
+    loop {
+        if abs(fb) <= tol {
+            return b
+        }
+        if abs(b - a) <= tol {
+            return b
+        }
+
+        // Try inverse quadratic interpolation if three distinct f-values
+        let s = 0.0
+        if abs(fa - fc) > tol {
+            if abs(fb - fc) > tol {
+                // inverse quadratic interpolation
+                let r = fb / fc
+                let q = fa / fc
+                let p = fb / fa
+                s = b + (p * (q * (r - q) * (c - b) - (1.0 - r) * (b - a))) / ((q - 1.0) * (r - 1.0) * (p - 1.0))
+            } else {
+                // secant method
+                s = b - fb * (b - a) / (fb - fa)
+            }
+        } else {
+            // secant method
+            s = b - fb * (b - a) / (fb - fa)
+        }
+
+        // Bisection midpoint
+        let mid = (a + b) / 2.0
+
+        // Reject interpolation and use bisection if s is out of bounds
+        let use_bisection = 0.0
+        if s < mid {
+            if s < b {
+                use_bisection = 1.0
+            }
+        } else {
+            if s > b {
+                use_bisection = 1.0
+            }
+        }
+
+        if use_bisection > 0.5 {
+            s = mid
+        }
+
+        // Evaluate at new point
+        let fs = f(s)
+
+        // c becomes the old b
+        c = b
+        fc = fb
+
+        // Maintain the bracket: a and b must have opposite signs
+        if fa * fs < 0.0 {
+            // root is between a and s
+            b = s
+            fb = fs
+        } else {
+            // root is between s and b
+            a = s
+            fa = fs
+        }
+
+        // Keep b as the best guess (smallest |f|)
+        if abs(fa) < abs(fb) {
+            let tmp = a
+            a = b
+            b = tmp
+            let tmp2 = fa
+            fa = fb
+            fb = tmp2
+        }
+    }
+}
