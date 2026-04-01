@@ -101,8 +101,8 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                 None => value,
             });
 
-        // Vector literal: `[elem, ...]` where each elem can be `expr` or `expr ~= tol`
-        let vec_element = expr
+        // expr optionally annotated with `~= tol` — reused in vec literals, call args, and method args
+        let tol_expr = expr
             .clone()
             .then(
                 just(Token::TolAssign)
@@ -117,7 +117,8 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                 None => value,
             });
 
-        let vec_literal = vec_element
+        let vec_literal = tol_expr
+            .clone()
             .separated_by(just(Token::Comma))
             .allow_trailing()
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
@@ -141,7 +142,7 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             });
 
         // Function calls: `expr(args)` with optional `~tol expr`
-        let args = expr
+        let args = tol_expr
             .clone()
             .separated_by(just(Token::Comma))
             .allow_trailing()
@@ -163,7 +164,8 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
         let method_suffix = just(Token::Dot)
             .ignore_then(select! { Token::Ident(s) => s })
             .then(
-                expr.clone()
+                tol_expr
+                    .clone()
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
                     .delimited_by(just(Token::LParen), just(Token::RParen)),

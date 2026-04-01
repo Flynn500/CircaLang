@@ -4,7 +4,13 @@ print(x)
 print(len(v))
 
 print(v)
-v.append([4.0])
+let a = 0.1 ~= 0.1
+v.push(a)
+v.push(4 ~= 0.1)
 
 print(v)
+
+let x1 = 1 ~= 0.1
+x1 = x1 
+print(x1)
 
