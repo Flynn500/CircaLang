@@ -37,8 +37,6 @@ pub enum Token {
     True,
     #[token("false")]
     False,
-    #[token("tol")]
-    Tol,
     #[token("loop")]
     Loop,
     #[token("break")]
@@ -52,13 +50,9 @@ pub enum Token {
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", priority = 1, callback = |lex| lex.slice().to_string())]
     Ident(String),
 
-    // Variable tolerance: `let x = expr ~= 0.1` or `(0.0 ~= tol)`
-    #[token("~=")]
-    TolAssign,
-
-    // Function tolerance: `f(x) ~tol 0.01` or `fn f(x) ~tol { }`
-    #[token("~tol")]
-    TolCall,
+    // Tolerance operator: `let x = expr ~ 0.1`, `f(x) ~ 0.01`, `fn f(x) ~t { }`
+    #[token("~")]
+    Tilde,
 
     // Comparison operators
     #[token("==")]
@@ -119,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_tolerance_binding() {
-        let input = "let a = 0.1 ~= 0.5";
+        let input = "let a = 0.1 ~ 0.5";
         let tokens: Vec<_> = Token::lexer(input)
             .map(|t| t.unwrap())
             .collect();
@@ -129,7 +123,7 @@ mod tests {
             Token::Ident("a".into()),
             Token::Assign,
             Token::Number(F64(0.1)),
-            Token::TolAssign,
+            Token::Tilde,
             Token::Number(F64(0.5)),
         ]);
     }
@@ -156,7 +150,7 @@ mod tests {
 
     #[test]
     fn test_tol_keyword_in_comparison() {
-        let input = "f(mid) == (0.0 ~= tol)";
+        let input = "f(mid) == (0.0 ~ tol)";
         let tokens: Vec<_> = Token::lexer(input)
             .map(|t| t.unwrap())
             .collect();
@@ -169,8 +163,8 @@ mod tests {
             Token::Eq,
             Token::LParen,
             Token::Number(F64(0.0)),
-            Token::TolAssign,
-            Token::Tol,
+            Token::Tilde,
+            Token::Ident("tol".into()),
             Token::RParen,
         ]);
     }

@@ -1,65 +1,65 @@
 // test_tier1.ca
 
 // === sqrt ===
-let s1 = sqrt(4.0) ~tol 0.001
+let s1 = sqrt(4.0) ~0.001
 print(s1)
-// expect: 2.0 ~= 0.001
+// expect: 2.0 ~ 0.001
 
-let s2 = sqrt(2.0) ~tol 0.0001
+let s2 = sqrt(2.0) ~0.0001
 print(s2)
-// expect: 1.4142 ~= 0.0001
+// expect: 1.4142 ~ 0.0001
 
-let s3 = sqrt(9.0) ~tol 0.1
+let s3 = sqrt(9.0) ~0.1
 print(s3)
-// expect: 3.0 ~= 0.1
+// expect: 3.0 ~ 0.1
 
 // === sin ===
-let sin1 = sin(0.0) ~tol 0.001
+let sin1 = sin(0.0) ~0.001
 print(sin1)
-// expect: 0.0 ~= 0.001
+// expect: 0.0 ~ 0.001
 
-let sin2 = sin(1.5707963) ~tol 0.0001
+let sin2 = sin(1.5707963) ~0.0001
 print(sin2)
-// expect: 1.0 ~= 0.0001
+// expect: 1.0 ~ 0.0001
 
-let sin3 = sin(1.0) ~tol 0.01
+let sin3 = sin(1.0) ~0.01
 print(sin3)
-// expect: 0.8414 ~= 0.01
+// expect: 0.8414 ~ 0.01
 
 // === cos ===
-let cos1 = cos(0.0) ~tol 0.001
+let cos1 = cos(0.0) ~0.001
 print(cos1)
-// expect: 1.0 ~= 0.001
+// expect: 1.0 ~ 0.001
 
-let cos2 = cos(1.5707963) ~tol 0.0001
+let cos2 = cos(1.5707963) ~0.0001
 print(cos2)
-// expect: 0.0 ~= 0.0001
+// expect: 0.0 ~ 0.0001
 
 // === exp ===
-let e1 = exp(0.0) ~tol 0.001
+let e1 = exp(0.0) ~0.001
 print(e1)
-// expect: 1.0 ~= 0.001
+// expect: 1.0 ~ 0.001
 
-let e2 = exp(1.0) ~tol 0.0001
+let e2 = exp(1.0) ~0.0001
 print(e2)
-// expect: 2.7182 ~= 0.0001
+// expect: 2.7182 ~ 0.0001
 
 // === ln ===
-let ln1 = ln(1.0) ~tol 0.001
+let ln1 = ln(1.0) ~0.001
 print(ln1)
-// expect: 0.0 ~= 0.001
+// expect: 0.0 ~ 0.001
 
-let ln2 = ln(2.7182818) ~tol 0.0001
+let ln2 = ln(2.7182818) ~0.0001
 print(ln2)
-// expect: 1.0 ~= 0.0001
+// expect: 1.0 ~ 0.0001
 
 // === tolerance propagation ===
-let x = 1.0 ~= 0.1
-let y = sin(x) ~tol 0.5
+let x = 1.0 ~ 0.1
+let y = sin(x) ~0.5
 print(y)
-// should work, propagated ~= 0.054 < 0.5
+// should work, propagated ~ 0.054 < 0.5
 
 // === should panic ===
 // uncomment to test:
-// let z = sin(x) ~tol 0.01
+// let z = sin(x) ~0.01
 // panic: input uncertainty exceeds requested tol

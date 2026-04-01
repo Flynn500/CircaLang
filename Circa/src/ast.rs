@@ -11,13 +11,14 @@ pub enum Stmt {
         tolerance: Option<Expr>,
     },
 
-    /// `fn name(params) { body }` or `fn name(params) ~= tol { body }`
-    /// When `guarantees_tol` is true, the caller's tol is applied to the return value.
+    /// `fn name(params) { body }` or `fn name(params) ~ident { body }`
+    /// When `tol_param` is Some, the caller's tolerance is injected as a variable
+    /// with that name and applied to the return value.
     FnDef {
         name: String,
         params: Vec<String>,
         body: Vec<Stmt>,
-        guarantees_tol: bool,
+        tol_param: Option<String>,
     },
 
     /// `return expr`
@@ -60,9 +61,6 @@ pub enum Expr {
     /// Variable reference
     Ident(String),
 
-    /// The `tol` keyword — resolves to the caller-provided tolerance
-    Tol,
-
     /// Binary operation: `a + b`, `a == b`, etc.
     BinOp {
         left: Box<Expr>,
@@ -90,11 +88,11 @@ pub enum Expr {
         tolerance: Box<Expr>,
     },
 
-    /// Anonymous function expression: `fn(params) { body }` or `fn(params) ~tol { body }`
+    /// Anonymous function expression: `fn(params) { body }` or `fn(params) ~ident { body }`
     Lambda {
         params: Vec<String>,
         body: Vec<Stmt>,
-        guarantees_tol: bool,
+        tol_param: Option<String>,
     },
 
     /// Vector literal: `[e1, e2, e3]`

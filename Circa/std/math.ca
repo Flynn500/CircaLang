@@ -110,5 +110,5 @@ fn pow(base, exponent) ~tol {
         panic(0)
     }
     
-    return exp(exponent * ln(base) ~tol tol) ~tol tol
+    return exp(exponent * ln(base) ~ tol) ~ tol
 }

@@ -66,9 +66,8 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             Token::False => Expr::Bool(false),
         };
         let ident = select! { Token::Ident(s) => Expr::Ident(s) };
-        let tol_kw = just(Token::Tol).to(Expr::Tol);
 
-        // Lambda: `fn(params) { body }` or `fn(params) ~tol { body }`
+        // Lambda: `fn(params) { body }` or `fn(params) ~ident { body }`
         let lambda = just(Token::Fn)
             .ignore_then(
                 select! { Token::Ident(s) => s }
@@ -76,19 +75,23 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                     .allow_trailing()
                     .delimited_by(just(Token::LParen), just(Token::RParen)),
             )
-            .then(just(Token::TolCall).or_not())
+            .then(
+                just(Token::Tilde)
+                    .ignore_then(select! { Token::Ident(s) => s })
+                    .or_not(),
+            )
             .then(block_for_expr.clone())
-            .map(|((params, has_tol), body)| Expr::Lambda {
+            .map(|((params, tol_param), body)| Expr::Lambda {
                 params,
                 body,
-                guarantees_tol: has_tol.is_some(),
+                tol_param,
             });
 
-        // Parenthesised expr, also handles `(value ~= tolerance)`
+        // Parenthesised expr, also handles `(value ~ tolerance)`
         let paren_expr = expr
             .clone()
             .then(
-                just(Token::TolAssign)
+                just(Token::Tilde)
                     .ignore_then(expr.clone())
                     .or_not(),
             )
@@ -101,11 +104,11 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                 None => value,
             });
 
-        // expr optionally annotated with `~= tol` — reused in vec literals, call args, and method args
+        // expr optionally annotated with `~ tol` — reused in vec literals, call args, and method args
         let tol_expr = expr
             .clone()
             .then(
-                just(Token::TolAssign)
+                just(Token::Tilde)
                     .ignore_then(expr.clone())
                     .or_not(),
             )
@@ -126,7 +129,6 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
 
         let atom = number
             .or(boolean)
-            .or(tol_kw)
             .or(lambda)
             .or(ident)
             .or(paren_expr)
@@ -141,7 +143,7 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                 expr: Box::new(rhs),
             });
 
-        // Function calls: `expr(args)` with optional `~tol expr`
+        // Function calls: `expr(args)` with optional `~ expr`
         let args = tol_expr
             .clone()
             .separated_by(just(Token::Comma))
@@ -150,7 +152,7 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
 
         let call_suffix = args
             .then(
-                just(Token::TolCall)
+                just(Token::Tilde)
                     .ignore_then(expr.clone())
                     .or_not(),
             )
@@ -241,13 +243,13 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
 
     // Step 4: build all statement parsers using expr and block, then define stmt_rec.
 
-    // let name = expr  OR  let name = expr ~= tol
+    // let name = expr  OR  let name = expr ~ tol
     let let_stmt = just(Token::Let)
         .ignore_then(select! { Token::Ident(s) => s })
         .then_ignore(just(Token::Assign))
         .then(expr.clone())
         .then(
-            just(Token::TolAssign)
+            just(Token::Tilde)
                 .ignore_then(expr.clone())
                 .or_not(),
         )
@@ -273,7 +275,7 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             else_body,
         });
 
-    // fn name(params) { body }  OR  fn name(params) ~tol { body }
+    // fn name(params) { body }  OR  fn name(params) ~ident { body }
     let fn_def = just(Token::Fn)
         .ignore_then(select! { Token::Ident(s) => s })
         .then(
@@ -282,13 +284,17 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                 .allow_trailing()
                 .delimited_by(just(Token::LParen), just(Token::RParen)),
         )
-        .then(just(Token::TolCall).or_not())
+        .then(
+            just(Token::Tilde)
+                .ignore_then(select! { Token::Ident(s) => s })
+                .or_not(),
+        )
         .then(block.clone())
-        .map(|(((name, params), has_tol), body)| Stmt::FnDef {
+        .map(|(((name, params), tol_param), body)| Stmt::FnDef {
             name,
             params,
             body,
-            guarantees_tol: has_tol.is_some(),
+            tol_param,
         });
 
     // loop { body }
@@ -349,7 +355,7 @@ mod tests {
 
     #[test]
     fn test_let_with_tolerance() {
-        let prog = parse_str("let a = 0.1 ~= 0.5");
+        let prog = parse_str("let a = 0.1 ~ 0.5");
         assert_eq!(prog.len(), 1);
         match &prog[0] {
             Stmt::Let { name, tolerance, .. } => {
@@ -396,16 +402,14 @@ mod tests {
 
     #[test]
     fn test_call_with_tolerance() {
-        // `let r = f(1.0, 2.0) ~= 0.01`
-        // The ~= is parsed on the let statement. The interpreter will:
-        // 1. Pass tol=0.01 into f's scope
-        // 2. Tag the resulting variable r with tolerance 0.01
-        let prog = parse_str("let r = f(1.0, 2.0) ~= 0.01");
+        // `let r = f(1.0, 2.0) ~ 0.01`
+        // The ~ is consumed by call_suffix, so the Call holds the tolerance.
+        let prog = parse_str("let r = f(1.0, 2.0) ~ 0.01");
         match &prog[0] {
             Stmt::Let { name, value, tolerance } => {
                 assert_eq!(name, "r");
-                assert!(tolerance.is_some());
-                assert!(matches!(value, Expr::Call { .. }));
+                assert!(tolerance.is_none());
+                assert!(matches!(value, Expr::Call { tolerance: Some(_), .. }));
             }
             other => panic!("expected Let, got {:?}", other),
         }
@@ -413,13 +417,13 @@ mod tests {
 
     #[test]
     fn test_comparison_with_tolerance() {
-        let prog = parse_str("let x = a == (0.0 ~= tol)");
+        let prog = parse_str("let x = a == (0.0 ~ tol)");
         assert_eq!(prog.len(), 1);
     }
 
     #[test]
     fn test_multiline_program() {
-        let src = "let a = 0.1 ~= 0.5\nlet b = 0.2 ~= 0.5\nprint(a == b)";
+        let src = "let a = 0.1 ~ 0.5\nlet b = 0.2 ~ 0.5\nprint(a == b)";
         let prog = parse_str(src);
         assert_eq!(prog.len(), 3);
     }

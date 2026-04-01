@@ -1,0 +1,4 @@
+let a = 4 ~ 0.1
+
+print(sqrt(a) ~ 0.05)
+print(sqrt(a))

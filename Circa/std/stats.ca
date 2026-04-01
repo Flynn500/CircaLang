@@ -1,0 +1,29 @@
+fn mean(values) {
+    let sum = 0.0
+    let n = len(values)
+    let i = 0
+    loop {
+        sum = sum + values[i]
+        i = i + 1
+        if i >= n { break }
+    }
+    return sum / n
+}
+
+fn variance(values) {
+    let m = mean(values)
+    let sum = 0.0
+    let n = len(values)
+    let i = 0
+    loop {
+        let diff = values[i] - m
+        sum = sum + diff * diff
+        i = i + 1
+        if i >= n { break }
+    }
+    return sum / n
+}
+
+fn std(values) {
+    return sqrt(variance(values))
+}

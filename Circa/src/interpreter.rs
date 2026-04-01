@@ -72,12 +72,12 @@ impl Interpreter {
                 Ok(None)
             }
 
-            Stmt::FnDef { name, params, body, guarantees_tol } => {
+            Stmt::FnDef { name, params, body, tol_param } => {
                 let func = Value::Func {
                     name: Rc::from(name.as_str()),
                     params: Rc::from(params.as_slice()),
                     body: Rc::from(body.as_slice()),
-                    guarantees_tol: *guarantees_tol,
+                    tol_param: tol_param.as_deref().map(Rc::from),
                 };
                 self.env.define(name.clone(), func);
                 Ok(None)
@@ -158,13 +158,6 @@ impl Interpreter {
                     .ok_or(format!("undefined variable: {}", name))
             }
 
-            Expr::Tol => {
-                self.env
-                    .get("tol")
-                    .cloned()
-                    .ok_or("tol is not defined in this scope".into())
-            }
-
             Expr::Unary { expr: inner, .. } => {
                 let val = self.eval_expr(inner)?;
                 match val {
@@ -194,12 +187,12 @@ impl Interpreter {
                 self.eval_call(func, args, caller_tol)
             }
 
-            Expr::Lambda { params, body, guarantees_tol } => {
+            Expr::Lambda { params, body, tol_param } => {
                 Ok(Value::Func {
                     name: Rc::from("<lambda>"),
                     params: Rc::from(params.as_slice()),
                     body: Rc::from(body.as_slice()),
-                    guarantees_tol: *guarantees_tol,
+                    tol_param: tol_param.as_deref().map(Rc::from),
                 })
             }
 
@@ -267,7 +260,7 @@ impl Interpreter {
             .collect::<Result<_, _>>()?;
 
         match func {
-            Value::Func { params, body, name, guarantees_tol } => {
+            Value::Func { params, body, name, tol_param } => {
                 if args.len() != params.len() {
                     return Err(format!(
                         "{}: expected {} args, got {}",
@@ -275,9 +268,9 @@ impl Interpreter {
                     ));
                 }
 
-                if caller_tol.is_some() && !guarantees_tol {
+                if caller_tol.is_some() && tol_param.is_none() {
                     return Err(format!(
-                        "{}: does not accept a tolerance argument (~tol not in signature)",
+                        "{}: does not accept a tolerance argument (~ not in signature)",
                         name
                     ));
                 }
@@ -289,10 +282,10 @@ impl Interpreter {
                     self.env.define(param.clone(), arg);
                 }
 
-                // Inject tol only for functions that declare ~tol
-                if guarantees_tol {
+                // Inject tolerance under the declared param name
+                if let Some(ref param_name) = tol_param {
                     let tol_f32 = caller_tol.unwrap_or(0.0);
-                    self.env.define("tol".into(), Value::number(tol_f32));
+                    self.env.define(param_name.as_ref().to_string(), Value::number(tol_f32));
                 }
 
                 // Execute body
@@ -312,9 +305,8 @@ impl Interpreter {
 
                 self.env.pop_scope();
 
-                // If the function guarantees tol (~= tol signature),
-                // tag the return value with the caller's tolerance.
-                if guarantees_tol {
+                // Tag the return value with the caller's tolerance.
+                if tol_param.is_some() {
                     if let Some(t) = caller_tol {
                         result = match result {
                             Value::Number { val, .. } => Value::number_with_tol(val, t),
@@ -335,7 +327,7 @@ impl Interpreter {
 
                 if caller_tol.is_some() && !guarantees_tol {
                     return Err(format!(
-                        "{}: does not accept a tolerance argument (~tol not in signature)",
+                        "{}: does not accept a tolerance argument (~ not in signature)",
                         name
                     ));
                 }

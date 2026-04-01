@@ -1,16 +1,9 @@
-let v = [1.0 ~= 0.1, 2.0, 3.0]
+let v = [1.0 ~ 0.1, 2.0, 3.0]
 let x = v[0]
 print(x)
 print(len(v))
+print(mean(v))
 
-print(v)
-let a = 0.1 ~= 0.1
-v.push(a)
-v.push(4 ~= 0.1)
 
-print(v)
 
-let x1 = 1 ~= 0.1
-x1 = x1 
-print(x1)
 

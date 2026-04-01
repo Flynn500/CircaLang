@@ -17,11 +17,11 @@ fn estimate_pi() ~tol {
     return sum * 4.0
 }
 
-let fast_pi = estimate_pi() ~tol 0.1
+let fast_pi = estimate_pi() ~ 0.1
 print(fast_pi)       // ~10 terms
 
-let good_pi = estimate_pi() ~tol 0.001
+let good_pi = estimate_pi() ~ 0.001
 print(good_pi)       // ~1,000 terms
 
-let great_pi = estimate_pi() ~tol 0.00001
+let great_pi = estimate_pi() ~ 0.00001
 print(great_pi)      // ~100,000 terms

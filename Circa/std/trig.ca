@@ -45,11 +45,11 @@ fn cos(x) ~tol {
 }
 
 fn tan(x) ~tol {
-    let c = cos(x) ~tol tol
+    let c = cos(x) ~ tol
     if abs(c) <= tol {
         panic(0)
     }
-    return sin(x) ~tol tol / c
+    return sin(x) ~ tol / c
 }
 
 fn asin(x) ~tol {
@@ -59,7 +59,7 @@ fn asin(x) ~tol {
     if x > 1.0 {
         panic(0)
     }
-    return solve(fn(s) { sin(s) ~tol tol - x }, 0.0 - 1.5708, 1.5708) ~tol tol
+    return solve(fn(s) { sin(s) ~ tol - x }, 0.0 - 1.5708, 1.5708) ~ tol
 }
 
 fn acos(x) ~tol {
@@ -69,7 +69,7 @@ fn acos(x) ~tol {
     if x > 1.0 {
         panic(0)
     }
-    return solve(fn(c) { cos(c) ~tol tol - x }, 0.0, 3.1415926) ~tol tol
+    return solve(fn(c) { cos(c) ~ tol - x }, 0.0, 3.1415926) ~ tol
 }
 
 fn atan2(y, x) ~tol {
@@ -79,6 +79,13 @@ fn atan2(y, x) ~tol {
         }
         return 0.0 - 1.5707963
     }
-    let angle = solve(fn(a) { tan(a) ~tol tol - y / x }, 0.0 - 1.5707, 1.5707) ~tol tol
+    let angle = solve(fn(a) { tan(a) ~ tol - y / x }, 0.0 - 1.5707, 1.5707) ~ tol
     return angle
+}
+
+fn ret(x) ~t{ 
+    if tolerance(x) < t{
+        panic(0) //tolerence is less than promised tol (t), we can't return
+    }
+    return x
 }

@@ -1,46 +1,42 @@
-//Circa lang example function
-//funcs declared with ~tol promise a result correct within tol
-//The resulting variable then holds that tol and it is propogated 
-//accordingly in future computations
+//example of writting tolerance aware functions. generally you would just 
+//write standard functions and allow tolerance to propogate, requesting 
+//for operations at a certain tolerance via our standard lib. But here
+//is how you might construct a basic root finding function.
 
 fn square_minus_two(x) {
     return (x * x) - 2.0
 }
 
-//declare function which promises result within tol
+//~ after function which promises result within tol
 fn find_root(f, lo, hi) ~tol {
     let mid = (lo + hi) / 2.0
-    
-    // In bisection, the maximum distance from 'mid' 
-    // to the true root is exactly (hi - lo) / 2.
+
     let current_error_margin = (hi - lo) / 2.0
 
-    // PROMISE GUARANTEE:
-    // We only return when the mathematical error margin 
-    // is less than or equal to the promised tolerance.
     if current_error_margin <= tol {
         return mid
     }
 
     if f(lo) * f(mid) > 0.0 {
         // root is NOT between lo and mid → discard lo
-        return find_root(f, mid, hi) ~tol tol
+        return find_root(f, mid, hi) ~ tol
     } else {
         // root is between lo and mid
-        return find_root(f, lo, mid) ~tol tol
+        return find_root(f, lo, mid) ~ tol
     }
 }
 
-let rough = find_root(square_minus_two, 0.0, 2.0) ~tol 0.1
+let rough = find_root(square_minus_two, 0.0, 2.0) ~ 0.1
 print(rough)
-print(tolerance(rough))
 
-let exact = find_root(square_minus_two, 0.0, 2.0) ~tol 0.001
+let exact = find_root(square_minus_two, 0.0, 2.0) ~ 0.001
 print(exact)
-print(tolerance(exact))
 
-//If you were to actually use a solver in pracitce:
-print(solve(square_minus_two, 0.0, 2.0) ~tol 0.1)
-print(solve(square_minus_two, 0.0, 2.0) ~tol 0.001)
-// the std lib will (ideally) have functions that handle tolerance promises correctly 
+
+//std lib versions, they account for input tolerance, much more rigouros
+let rough = solve(square_minus_two, 0.0, 2.0) ~ 0.1
+print(rough)
+
+let exact = solve(square_minus_two, 0.0, 2.0) ~ 0.001
+print(exact)
 

@@ -19,7 +19,7 @@ pub enum Value {
         name: Rc<str>,
         params: Rc<[String]>,
         body: Rc<[Stmt]>,
-        guarantees_tol: bool,
+        tol_param: Option<Rc<str>>,
     },
     /// A native (Rust-implemented) function.
     NativeFunc {
@@ -75,7 +75,7 @@ impl Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::Number { val, tol: Some(t) } => write!(f, "{} ~= {}", val, t),
+            Value::Number { val, tol: Some(t) } => write!(f, "{} ~ {}", val, t),
             Value::Number { val, tol: None } => write!(f, "{}", val),
             Value::Bool(b) => write!(f, "{}", if *b { "True" } else { "False" }),
             Value::Func { name, .. } => write!(f, "<fn {}>", name),

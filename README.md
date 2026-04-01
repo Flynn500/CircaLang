@@ -10,22 +10,22 @@ circa --run main.ca
 
 ## The Basics
 
-Values in Circa can carry a tolerance with the `~=` operator:
+Values in Circa can carry a tolerance with the `~` operator:
 
 ```
-let x = 3.14 ~= 0.01      // x is 3.14, known to ±0.01
+let x = 3.14 ~ 0.01      // x is 3.14, known to ±0.01
 let y = 9.81               // y is exact (tolerance = 0)
 ```
 
 Tolerance propagates through arithmetic automatically:
 
 ```
-let a = 10.0 ~= 0.1
-let b = 20.0 ~= 0.2
+let a = 10.0 ~ 0.1
+let b = 20.0 ~ 0.2
 
-print(a + b)    // 30 ~= 0.3
-print(a + 5.0)  // 15 ~= 0.1   (exact values don't add uncertainty)
-print(a * b)    // 200 ~= 3.0  (product rule: |a|*tol(b) + |b|*tol(a))
+print(a + b)    // 30 ~ 0.3
+print(a + 5.0)  // 15 ~ 0.1   (exact values don't add uncertainty)
+print(a * b)    // 200 ~ 3.0  (product rule: |a|*tol(b) + |b|*tol(a))
 ```
 
 ## Functions
@@ -37,11 +37,11 @@ fn kinetic_energy(mass, velocity) {
     return 0.5 * mass * velocity * velocity
 }
 
-let m = 2.0 ~= 0.1
-let v = 3.0 ~= 0.05
+let m = 2.0 ~ 0.1
+let v = 3.0 ~ 0.05
 
 let ke = kinetic_energy(m, v)
-print(ke)   // 9.0 ~= 0.75
+print(ke)   // 9.0 ~ 0.75
 ```
 
 No special syntax needed, the tolerance on `m` and `v` propagates through the multiplication automatically.
@@ -53,6 +53,7 @@ fn distance(x1, y1, x2, y2) {
     
     //sqrt is a tolerance-aware function from the standard library. its result is gauranteed 
     //to be within 0.001 of the true result, accounting for the uncertainty of its input params.
+    //The function will try and do as little as possible to meet these requirements.
     return sqrt(dx * dx + dy * dy) ~tol 0.001
 }
 
@@ -62,7 +63,7 @@ print(d)    // 5.0 ~= ...
 
 ## Tolerance-Aware Functions (`~tol`)
 
-Some functions can accept a precision target with `~tol`. These functions adapt how much work they do based on the tolerance you request:
+Some functions can accept a precision target with `~tol_variable`. This value functions similarly to a standard variable, with the caveat that the tolerance of the return value is automatically set to this value. The goal of a tolerance aware function is to do as little work as possible to achieve a result within `tol`.
 
 ```
 fn solve(f, a, b) ~tol {
@@ -84,7 +85,7 @@ The `~tol` parameter does two things: it controls how hard the function works in
 If a function can't meet the requested tolerance because the input values are too uncertain, it panics:
 
 ```
-let noisy = 1.0 ~= 0.5
+let noisy = 1.0 ~ 0.5
 let y = sin(noisy) ~tol 0.01   // panic: input uncertainty exceeds requested tol
 ```
 
