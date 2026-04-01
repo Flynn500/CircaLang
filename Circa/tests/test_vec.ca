@@ -2,3 +2,9 @@ let v = [1.0 ~= 0.1, 2.0, 3.0]
 let x = v[0]
 print(x)
 print(len(v))
+
+print(v)
+v.append([4.0])
+
+print(v)
+

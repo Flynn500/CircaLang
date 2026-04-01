@@ -101,6 +101,8 @@ pub enum Token {
     RBracket,
     #[token(",")]
     Comma,
+    #[token(".")]
+    Dot,
 
     // Newlines are significant (statement terminators)
     #[token("\n")]

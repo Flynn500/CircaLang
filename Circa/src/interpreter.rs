@@ -223,6 +223,10 @@ impl Interpreter {
                 Ok(Value::Vector(values))
             }
 
+            Expr::MethodCall { receiver, method, args } => {
+                self.eval_method_call(receiver, method, args)
+            }
+
             Expr::Index { vec, index } => {
                 let vec_val = self.eval_expr(vec)?;
                 let idx_val = self.eval_expr(index)?;
@@ -426,6 +430,109 @@ impl Interpreter {
                 };
                 Ok(Value::Bool(result))
             }
+        }
+    }
+
+    /// Evaluate a method call on a receiver value.
+    fn eval_method_call(
+        &mut self,
+        receiver_expr: &Expr,
+        method: &str,
+        arg_exprs: &[Expr],
+    ) -> Result<Value, String> {
+        let args: Vec<Value> = arg_exprs
+            .iter()
+            .map(|a| self.eval_expr(a))
+            .collect::<Result<_, _>>()?;
+        let receiver = self.eval_expr(receiver_expr)?;
+
+        match &receiver {
+            Value::Vector(_) => self.eval_vector_method(receiver_expr, receiver, method, args),
+            other => Err(format!("{} has no methods", other)),
+        }
+    }
+
+    /// Handle methods on vectors: push, pop, append, clear, len.
+    fn eval_vector_method(
+        &mut self,
+        receiver_expr: &Expr,
+        receiver: Value,
+        method: &str,
+        args: Vec<Value>,
+    ) -> Result<Value, String> {
+        match method {
+            "push" => {
+                if args.len() != 1 {
+                    return Err("push: expected 1 argument".into());
+                }
+                let mut elems = match receiver {
+                    Value::Vector(v) => v,
+                    _ => unreachable!(),
+                };
+                elems.push(args.into_iter().next().unwrap());
+                self.reassign_receiver(receiver_expr, Value::Vector(elems))?;
+                Ok(Value::Bool(false))
+            }
+            "append" => {
+                if args.len() != 1 {
+                    return Err("append: expected 1 argument".into());
+                }
+                let mut elems = match receiver {
+                    Value::Vector(v) => v,
+                    _ => unreachable!(),
+                };
+                let other = match args.into_iter().next().unwrap() {
+                    Value::Vector(v) => v,
+                    other => return Err(format!("append: expected a vector, got {}", other)),
+                };
+                elems.extend(other);
+                self.reassign_receiver(receiver_expr, Value::Vector(elems))?;
+                Ok(Value::Bool(false))
+            }
+            "pop" => {
+                if !args.is_empty() {
+                    return Err("pop: expected 0 arguments".into());
+                }
+                let mut elems = match receiver {
+                    Value::Vector(v) => v,
+                    _ => unreachable!(),
+                };
+                let val = elems.pop().ok_or("pop: vector is empty".to_string())?;
+                self.reassign_receiver(receiver_expr, Value::Vector(elems))?;
+                Ok(val)
+            }
+            "clear" => {
+                if !args.is_empty() {
+                    return Err("clear: expected 0 arguments".into());
+                }
+                self.reassign_receiver(receiver_expr, Value::Vector(Vec::new()))?;
+                Ok(Value::Bool(false))
+            }
+            "len" => {
+                if !args.is_empty() {
+                    return Err("len: expected 0 arguments".into());
+                }
+                let elems = match &receiver {
+                    Value::Vector(v) => v,
+                    _ => unreachable!(),
+                };
+                Ok(Value::number(elems.len() as f32))
+            }
+            other => Err(format!("vector has no method '{}'", other)),
+        }
+    }
+
+    /// Write a mutated value back to the receiver variable.
+    fn reassign_receiver(&mut self, receiver_expr: &Expr, new_val: Value) -> Result<(), String> {
+        match receiver_expr {
+            Expr::Ident(name) => {
+                if !self.env.assign(name, new_val) {
+                    Err(format!("undefined variable: {}", name))
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err("cannot mutate a temporary value; assign to a variable first".into()),
         }
     }
 }

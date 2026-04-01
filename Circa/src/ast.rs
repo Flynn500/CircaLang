@@ -106,6 +106,13 @@ pub enum Expr {
         vec: Box<Expr>,
         index: Box<Expr>,
     },
+
+    /// Method call: `receiver.method(args)`
+    MethodCall {
+        receiver: Box<Expr>,
+        method: String,
+        args: Vec<Expr>,
+    },
 }
 
 #[derive(Debug, Clone)]

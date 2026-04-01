@@ -56,6 +56,7 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
     enum PostfixOp {
         Call(Vec<Expr>, Option<Expr>),
         Index(Expr),
+        MethodCall(String, Vec<Expr>),
     }
 
     let expr = recursive(move |expr| {
@@ -159,8 +160,18 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
             .map(PostfixOp::Index);
 
+        let method_suffix = just(Token::Dot)
+            .ignore_then(select! { Token::Ident(s) => s })
+            .then(
+                expr.clone()
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+            )
+            .map(|(name, args)| PostfixOp::MethodCall(name, args));
+
         let postfixed = unary
-            .then(call_suffix.or(index_suffix).repeated())
+            .then(call_suffix.or(index_suffix).or(method_suffix).repeated())
             .foldl(|base, op| match op {
                 PostfixOp::Call(args, tol) => Expr::Call {
                     func: Box::new(base),
@@ -170,6 +181,11 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                 PostfixOp::Index(idx) => Expr::Index {
                     vec: Box::new(base),
                     index: Box::new(idx),
+                },
+                PostfixOp::MethodCall(method, args) => Expr::MethodCall {
+                    receiver: Box::new(base),
+                    method,
+                    args,
                 },
             });
 
