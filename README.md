@@ -105,6 +105,8 @@ print(ln(2.7182818) ~tol 0.0001)    // 1.0000262 ~= 0.0001
 
 Looser tolerance = fewer iterations = faster results. The `sin(1.0) ~tol 0.01` call above only computes two Taylor terms because that's all it needs.
 
+We also include statistical functions, numerical methods (solve, intergrate etc.), linear algebra methods for matrices & vectors. See docs/std
+
 ## Why?
 
 Most numerical code computes everything to machine precision whether you need it or not. Circa makes precision explicit:

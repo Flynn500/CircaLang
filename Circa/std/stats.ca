@@ -10,7 +10,7 @@ fn mean(values) {
     return sum / n
 }
 
-fn variance(values) {
+fn var(values) {
     let m = mean(values)
     let sum = 0.0
     let n = len(values)
@@ -25,5 +25,5 @@ fn variance(values) {
 }
 
 fn std(values) {
-    return sqrt(variance(values))
+    return sqrt(std(values))
 }

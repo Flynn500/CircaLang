@@ -65,6 +65,7 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             Token::True => Expr::Bool(true),
             Token::False => Expr::Bool(false),
         };
+        let none = just(Token::None).map(|_| Expr::None);
         let ident = select! { Token::Ident(s) => Expr::Ident(s) };
 
         // Lambda: `fn(params) { body }` or `fn(params) ~ident { body }`
@@ -129,6 +130,7 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
 
         let atom = number
             .or(boolean)
+            .or(none)
             .or(lambda)
             .or(ident)
             .or(paren_expr)

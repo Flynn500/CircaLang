@@ -1,0 +1,42 @@
+// Test solve
+print(solve(fn(x) { return x * x - 2.0 }, 0.0, 2.0) ~ 0.001)
+print(solve(fn(x) { return x * x - 2.0 }, 0.0, 2.0) ~ 0.0001)
+
+// solve with None tol (should use 1E-7)
+print(solve(fn(x) { return x * x - 2.0 }, 0.0, 2.0))
+
+// solve with uncertain brackets
+let a = 0.0 ~ 0.1
+let b = 2.0 ~ 0.1
+print(solve(fn(x) { return x * x - 2.0 }, a, b) ~ 0.001)
+
+// Test differentiate
+// d/dx(x^2) at x=3 should be 6
+print(differentiate(fn(x) { return x * x }, 3.0) ~ 0.01)
+print(differentiate(fn(x) { return x * x }, 3.0) ~ 0.0001)
+
+// d/dx(x^3) at x=2 should be 12
+print(differentiate(fn(x) { return x * x * x }, 2.0) ~ 0.01)
+
+// differentiate with None tol
+print(differentiate(fn(x) { return x * x }, 3.0))
+
+// differentiate with uncertain x
+let x = 3.0 ~ 0.01
+print(differentiate(fn(x) { return x * x }, x) ~ 0.1)
+
+// Test integrate
+// integral of x from 0 to 1 should be 0.5
+print(integrate(fn(x) { return x }, 0.0, 1.0) ~ 0.01)
+
+// integral of x^2 from 0 to 1 should be 0.333...
+print(integrate(fn(x) { return x * x }, 0.0, 1.0) ~ 0.01)
+print(integrate(fn(x) { return x * x }, 0.0, 1.0) ~ 0.0001)
+
+// integrate with None tol
+print(integrate(fn(x) { return x * x }, 0.0, 1.0))
+
+// integrate with uncertain bounds
+let lo = 0.0 ~ 0.01
+let hi = 1.0 ~ 0.01
+print(integrate(fn(x) { return x * x }, lo, hi) ~ 0.1)

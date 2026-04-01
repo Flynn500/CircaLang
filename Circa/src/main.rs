@@ -5,6 +5,7 @@ mod interpreter;
 mod lexer;
 mod parser;
 mod value;
+mod optimize;
 
 use std::env as std_env;
 use std::fs;
@@ -57,7 +58,7 @@ fn main() {
         }
     };
 
-    let mut full_program = match parser::parse(stdlib_tokens) {
+    let full_program = match parser::parse(stdlib_tokens) {
         Ok(p) => p,
         Err(errs) => {
             for e in errs {
@@ -66,6 +67,8 @@ fn main() {
             std::process::exit(1);
         }
     };
+    
+    let mut full_program = optimize::optimize(full_program);
 
     full_program.extend(program);
 

@@ -20,4 +20,4 @@ fn fib(n) {
     return b
 }
 
-print(fib(50.0))
+print(fib(64.0))

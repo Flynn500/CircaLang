@@ -3,15 +3,15 @@ use crate::ast::Stmt;
 use std::rc::Rc;
 /// Signature for a native (Rust-implemented) Circa function.
 /// The second argument is the caller-provided tolerance, if any.
-pub type NativeFn = fn(&[Value], Option<f32>) -> Result<Value, String>;
+pub type NativeFn = fn(&[Value], Option<f64>) -> Result<Value, String>;
 
 /// Runtime value in Circa.
 #[derive(Debug, Clone)]
 pub enum Value {
     /// A number with an optional tolerance.
     Number {
-        val: f32,
-        tol: Option<f32>,
+        val: f64,
+        tol: Option<f64>,
     },
     Bool(bool),
     /// A user-defined function (captures param names + body).
@@ -30,14 +30,16 @@ pub enum Value {
     },
     /// A vector of values.
     Vector(Vec<Value>),
+    /// None value — represents absence of a value (used for optional tolerance).
+    None,
 }
 
 impl Value {
-    pub fn number(val: f32) -> Self {
+    pub fn number(val: f64) -> Self {
         Value::Number { val, tol: None }
     }
 
-    pub fn number_with_tol(val: f32, tol: f32) -> Self {
+    pub fn number_with_tol(val: f64, tol: f64) -> Self {
         Value::Number { val, tol: Some(tol) }
     }
 
@@ -51,11 +53,12 @@ impl Value {
                 Some((a - b).abs() <= tolerance)
             }
             (Value::Bool(a), Value::Bool(b)) => Some(a == b),
+            (Value::None, Value::None) => Some(true),
             _ => None,
         }
     }
 
-    pub fn as_f32(&self) -> Option<f32> {
+    pub fn as_f64(&self) -> Option<f64> {
         match self {
             Value::Number { val, .. } => Some(*val),
             _ => None,
@@ -67,6 +70,7 @@ impl Value {
             Value::Bool(b) => Some(*b),
             // Truthy: non-zero numbers
             Value::Number { val, .. } => Some(*val != 0.0),
+            Value::None => Some(false),
             _ => None,
         }
     }
@@ -83,7 +87,8 @@ impl fmt::Display for Value {
             Value::Vector(elems) => {
                 let parts: Vec<String> = elems.iter().map(|v| v.to_string()).collect();
                 write!(f, "[{}]", parts.join(", "))
-            }
+            },
+            Value::None => write!(f, "None"),
         }
     }
 }

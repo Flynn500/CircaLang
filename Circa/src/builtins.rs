@@ -16,32 +16,32 @@ pub fn register_builtins(env: &mut Env) {
     }
 }
 
-fn builtin_tolerance(args: &[Value], _caller_tol: Option<f32>) -> Result<Value, String> {
+fn builtin_tolerance(args: &[Value], _caller_tol: Option<f64>) -> Result<Value, String> {
     match &args[0] {
         Value::Number { tol, .. } => Ok(Value::number(tol.unwrap_or(0.0))),
         other => Err(format!("tolerance: expected a number, got {}", other)),
     }
 }
 
-fn builtin_panic(args: &[Value], _caller_tol: Option<f32>) -> Result<Value, String> {
+fn builtin_panic(args: &[Value], _caller_tol: Option<f64>) -> Result<Value, String> {
     Err(format!("panic: {}", args[0]))
 }
 
-fn builtin_print(args: &[Value], _caller_tol: Option<f32>) -> Result<Value, String> {
+fn builtin_print(args: &[Value], _caller_tol: Option<f64>) -> Result<Value, String> {
     println!("{}", args[0]);
     Ok(Value::Bool(false))
 }
 
-fn builtin_snap(args: &[Value], _caller_tol: Option<f32>) -> Result<Value, String> {
+fn builtin_snap(args: &[Value], _caller_tol: Option<f64>) -> Result<Value, String> {
     match &args[0] {
         Value::Number { val, .. } => Ok(Value::number(*val)),
         other => Err(format!("snap: expected a number, got {}", other)),
     }
 }
 
-fn builtin_len(args: &[Value], _caller_tol: Option<f32>) -> Result<Value, String> {
+fn builtin_len(args: &[Value], _caller_tol: Option<f64>) -> Result<Value, String> {
     match &args[0] {
-        Value::Vector(elems) => Ok(Value::number(elems.len() as f32)),
+        Value::Vector(elems) => Ok(Value::number(elems.len() as f64)),
         other => Err(format!("len: expected a vector, got {}", other)),
     }
 }

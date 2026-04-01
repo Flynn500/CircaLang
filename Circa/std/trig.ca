@@ -7,11 +7,15 @@ fn __sin_approx(x) {
 }
 
 fn sin(x) ~tol {
+    let target = 1E-7
     let propagated = tolerance(x) * abs(__cos_approx(x))
-    if propagated > tol {
-        panic(4.0) // error 4: sin input uncertainty exceeds requested tol
+    if tol {
+        target = tol
+        if propagated > target {
+            panic(4.0)
+        }
     }
-    
+
     let result = 0.0
     let term = x
     let i = 1.0
@@ -19,18 +23,22 @@ fn sin(x) ~tol {
         result = result + term
         term = 0.0 - term * x * x / ((i + 1.0) * (i + 2.0))
         i = i + 2.0
-        if abs(term) <= tol {
+        if abs(term) <= target - propagated {
             return result
         }
     }
 }
 
 fn cos(x) ~tol {
+    let target = 1E-7
     let propagated = tolerance(x) * abs(__sin_approx(x))
-    if propagated > tol {
-        panic(5.0) // error 5: cos input uncertainty exceeds requested tol
+    if tol {
+        target = tol
+        if propagated > target {
+            panic(5.0)
+        }
     }
-    
+
     let result = 0.0
     let term = 1.0
     let i = 0.0
@@ -38,7 +46,7 @@ fn cos(x) ~tol {
         result = result + term
         term = 0.0 - term * x * x / ((i + 1.0) * (i + 2.0))
         i = i + 2.0
-        if abs(term) <= tol {
+        if abs(term) <= target - propagated {
             return result
         }
     }
@@ -81,11 +89,4 @@ fn atan2(y, x) ~tol {
     }
     let angle = solve(fn(a) { tan(a) ~ tol - y / x }, 0.0 - 1.5707, 1.5707) ~ tol
     return angle
-}
-
-fn ret(x) ~t{ 
-    if tolerance(x) < t{
-        panic(0) //tolerence is less than promised tol (t), we can't return
-    }
-    return x
 }

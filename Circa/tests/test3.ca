@@ -1,10 +1,49 @@
-fn check(x) ~tol {
-    if x == (0.0 ~ tol) {
-        print(true)
-    } else {
-        print(false)
-    }
+// ── Circa Showcase ──
+// Demonstrates: tolerance propagation, solve, trig, stats
+
+// === 1. Tolerance propagates through arithmetic ===
+let sensor_a = 22.5 ~ 0.3
+let sensor_b = 23.1 ~ 0.2
+let avg_temp = (sensor_a + sensor_b) / 2.0
+print(avg_temp)
+
+// === 2. Root finding with solve ===
+fn cubic(x) {
+    return x * x * x - 6.0 * x * x + 11.0 * x - 6.0
 }
 
-check(0.05) ~ 0.1
-check(0.05) ~ 0.01
+// roots are at 1, 2, 3
+let root1 = solve(cubic, 0.5, 1.5) ~ 0.001
+print(root1)
+
+let root2 = solve(cubic, 1.5, 2.5) ~ 0.001
+print(root2)
+
+let root3 = solve(cubic, 2.5, 3.5) ~ 0.001
+print(root3)
+
+// === 3. Trig ===
+let angle = 0.7854
+let s = sin(angle)
+let c = cos(angle)
+print(s)
+print(c)
+
+// sin^2 + cos^2 should be 1
+let identity = s * s + c * c
+print(identity)
+
+// === 4. Stats on a data set ===
+let data = [10.2, 9.8, 10.5, 10.0, 9.7, 10.3]
+let m = mean(data)
+let v = var(data)
+let s = std(data)
+print(m)
+print(v)
+print(s)
+
+// === 5. Combining it all — noisy measurement ===
+// Suppose each reading has instrument tolerance
+let readings = [4.7 ~ 0.1, 5.1 ~ 0.1, 4.9 ~ 0.1, 5.0 ~ 0.1]
+let avg = mean(readings)
+print(avg)

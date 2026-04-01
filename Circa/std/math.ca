@@ -23,20 +23,23 @@ fn min(a, b) {
 
 fn sqrt(n) ~tol {
     if n < 0.0 {
-        panic(1.0) // error 1: sqrt of negative input
+        panic(1.0)
     }
 
-    let rough = (n + 1.0) / 2.0
-    let propagated = tolerance(n) / (2.0 * rough)
-
-    if propagated > tol {
-        panic(2.0) // error 2: sqrt input uncertainty exceeds requested tol
+    let target = 1E-7
+    if tol {
+        let rough = (n + 1.0) / 2.0
+        let propagated = tolerance(n) / (2.0 * rough)
+        if propagated > tol {
+            panic(0)
+        }
+        target = tol - propogated
     }
     
     let x = n
     loop {
         let next = (x + n / x) / 2.0
-        if abs(next - x) <= tol {
+        if abs(next - x) <= target {
             return next
         }
         x = next
@@ -48,9 +51,13 @@ fn __exp_approx(x) {
 }
 
 fn exp(x) ~tol {
-    let propagated = tolerance(x) * abs(__exp_approx(x))
-    if propagated > tol {
-        panic(3.0) // error 3: exp input uncertainty exceeds requested tol
+    let target = 1E-7
+    if tol {
+        let propagated = tolerance(x) * abs(__exp_approx(x))
+        if propagated > tol {
+            panic(0)
+        }
+        target = tol - propogated
     }
     
     let result = 0.0
@@ -60,7 +67,7 @@ fn exp(x) ~tol {
         result = result + term
         term = term * x / i
         i = i + 1.0
-        if abs(term) <= tol {
+        if abs(term) <= target {
             return result
         }
     }
@@ -70,13 +77,16 @@ fn ln(x) ~tol {
     if x <= 0.0 {
         panic(0)
     }
-    
-    let propagated = tolerance(x) / abs(x)
-    if propagated > tol {
-        panic(0)
+
+    let target = 1E-7
+    if tol {
+        let propagated = tolerance(x) / abs(x)
+        if propagated > tol {
+            panic(0)
+        }
+        target = tol - propogated
     }
-    
-    // Range reduce: x = m * 2^k, compute ln(m) + k*ln(2)
+
     let k = 0.0
     let m = x
     loop {
@@ -89,8 +99,7 @@ fn ln(x) ~tol {
         m = m * 2.0
         k = k - 1.0
     }
-    
-    // Now 1 <= m <= 2, use series for ln(1 + t) where t = m - 1
+
     let t = m - 1.0
     let result = 0.0
     let term = t
@@ -99,7 +108,7 @@ fn ln(x) ~tol {
         result = result + term / i
         term = 0.0 - term * t
         i = i + 1.0
-        if abs(term / i) <= tol {
+        if abs(term / i) <= target {
             return result + k * 0.6931471805599453
         }
     }

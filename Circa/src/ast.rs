@@ -58,6 +58,9 @@ pub enum Expr {
     /// Boolean literal
     Bool(bool),
 
+    /// None literal
+    None,
+
     /// Variable reference
     Ident(String),
 

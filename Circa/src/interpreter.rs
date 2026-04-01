@@ -44,17 +44,22 @@ impl Interpreter {
                 // Evaluate the value expression (calls handle their own ~tol)
                 let result = self.eval_expr(value)?;
 
-                // Apply ~= tolerance to the stored variable
+                // Apply ~ tolerance to the stored variable
                 let result = if let Some(tol_expr) = tolerance {
                     let tol_val = self.eval_expr(tol_expr)?;
-                    let tol_f32 = tol_val
-                        .as_f32()
-                        .ok_or("tolerance must be a number".to_string())?;
-                    match result {
-                        Value::Number { val, .. } => Value::number_with_tol(val, tol_f32),
-                        other => return Err(format!(
-                            "cannot apply tolerance to {}", other
-                        )),
+                    match tol_val {
+                        Value::None => result,
+                        _ => {
+                            let tol_f32 = tol_val
+                                .as_f64()
+                                .ok_or("tolerance must be a number or None".to_string())?;
+                            match result {
+                                Value::Number { val, .. } => Value::number_with_tol(val, tol_f32),
+                                other => return Err(format!(
+                                    "cannot apply tolerance to {}", other
+                                )),
+                            }
+                        }
                     }
                 } else {
                     result
@@ -147,9 +152,11 @@ impl Interpreter {
     /// Evaluate an expression to a Value.
     fn eval_expr(&mut self, expr: &Expr) -> Result<Value, String> {
         match expr {
-            Expr::Number(n) => Ok(Value::number(*n as f32)),
+            Expr::Number(n) => Ok(Value::number(*n)),
 
             Expr::Bool(b) => Ok(Value::Bool(*b)),
+
+            Expr::None => Ok(Value::None),
 
             Expr::Ident(name) => {
                 self.env
@@ -178,9 +185,12 @@ impl Interpreter {
                 let caller_tol = match tolerance {
                     Some(tol_expr) => {
                         let tol_val = self.eval_expr(tol_expr)?;
-                        Some(tol_val.as_f32().ok_or(
-                            "tolerance must be a number".to_string(),
-                        )?)
+                        match tol_val {
+                            Value::None => None,
+                            other => Some(other.as_f64().ok_or(
+                                "tolerance must be a number or None".to_string(),
+                            )?),
+                        }
                     }
                     None => None,
                 };
@@ -199,15 +209,19 @@ impl Interpreter {
             Expr::WithTolerance { value, tolerance } => {
                 let val = self.eval_expr(value)?;
                 let tol = self.eval_expr(tolerance)?;
-                let tol_f32 = tol
-                    .as_f32()
-                    .ok_or("tolerance must be a number".to_string())?;
-                match val {
-                    Value::Number { val, .. } => Ok(Value::number_with_tol(val, tol_f32)),
-                    _ => Err("cannot apply tolerance to non-number".into()),
+                match tol {
+                    Value::None => Ok(val),
+                    _ => {
+                        let tol_f64 = tol
+                            .as_f64()
+                            .ok_or("tolerance must be a number or None".to_string())?;
+                        match val {
+                            Value::Number { val, .. } => Ok(Value::number_with_tol(val, tol_f64)),
+                            _ => Err("cannot apply tolerance to non-number".into()),
+                        }
+                    }
                 }
             }
-
             Expr::VecLiteral(elements) => {
                 let values = elements
                     .iter()
@@ -230,7 +244,7 @@ impl Interpreter {
                 };
 
                 let idx_f = idx_val
-                    .as_f32()
+                    .as_f64()
                     .ok_or_else(|| "index must be a number".to_string())?;
 
                 if idx_f < 0.0 {
@@ -251,7 +265,7 @@ impl Interpreter {
         &mut self,
         func_expr: &Expr,
         arg_exprs: &[Expr],
-        caller_tol: Option<f32>,
+        caller_tol: Option<f64>,
     ) -> Result<Value, String> {
         let func = self.eval_expr(func_expr)?;
         let args: Vec<Value> = arg_exprs
@@ -284,8 +298,11 @@ impl Interpreter {
 
                 // Inject tolerance under the declared param name
                 if let Some(ref param_name) = tol_param {
-                    let tol_f32 = caller_tol.unwrap_or(0.0);
-                    self.env.define(param_name.as_ref().to_string(), Value::number(tol_f32));
+                    let tol_val = match caller_tol {
+                        Some(t) => Value::number(t),
+                        None => Value::None,
+                    };
+                    self.env.define(param_name.as_ref().to_string(), tol_val);
                 }
 
                 // Execute body
@@ -411,8 +428,8 @@ impl Interpreter {
 
             // Ordered comparisons (exact, no tolerance)
             BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte => {
-                let a = lhs.as_f32().ok_or("left operand must be a number")?;
-                let b = rhs.as_f32().ok_or("right operand must be a number")?;
+                let a = lhs.as_f64().ok_or("left operand must be a number")?;
+                let b = rhs.as_f64().ok_or("right operand must be a number")?;
                 let result = match op {
                     BinOp::Lt => a < b,
                     BinOp::Gt => a > b,
@@ -508,7 +525,7 @@ impl Interpreter {
                     Value::Vector(v) => v,
                     _ => unreachable!(),
                 };
-                Ok(Value::number(elems.len() as f32))
+                Ok(Value::number(elems.len()as f64))
             }
             other => Err(format!("vector has no method '{}'", other)),
         }
