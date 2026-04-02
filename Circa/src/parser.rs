@@ -57,15 +57,17 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
         Call(Vec<Expr>, Option<Expr>),
         Index(Expr),
         MethodCall(String, Vec<Expr>),
+        FieldAccess(String),
     }
 
-    let expr = recursive(move |expr| {
+        let expr = recursive(move |expr| {
         let number = select! { Token::Number(n) => Expr::Number(n.0) };
         let boolean = select! {
             Token::True => Expr::Bool(true),
             Token::False => Expr::Bool(false),
         };
         let none = just(Token::None).map(|_| Expr::None);
+    
         let ident = select! { Token::Ident(s) => Expr::Ident(s) };
 
         // Lambda: `fn(params) { body }` or `fn(params) ~ident { body }`
@@ -121,6 +123,18 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                 None => value,
             });
 
+        let struct_init = just(Token::New)
+            .ignore_then(select! { Token::Ident(s) => s })
+            .then(
+                select! { Token::Ident(s) => s }
+                    .then_ignore(just(Token::Assign))
+                    .then(tol_expr.clone())
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+            )
+            .map(|(name, fields)| Expr::StructInit { name, fields });
+
         let vec_literal = tol_expr
             .clone()
             .separated_by(just(Token::Comma))
@@ -132,6 +146,7 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             .or(boolean)
             .or(none)
             .or(lambda)
+            .or(struct_init)
             .or(ident)
             .or(paren_expr)
             .or(vec_literal);
@@ -165,19 +180,23 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
             .map(PostfixOp::Index);
 
-        let method_suffix = just(Token::Dot)
+        let dot_suffix = just(Token::Dot)
             .ignore_then(select! { Token::Ident(s) => s })
             .then(
                 tol_expr
                     .clone()
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
-                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+                    .delimited_by(just(Token::LParen), just(Token::RParen))
+                    .or_not(),
             )
-            .map(|(name, args)| PostfixOp::MethodCall(name, args));
+            .map(|(name, maybe_args)| match maybe_args {
+                Some(args) => PostfixOp::MethodCall(name, args),
+                None => PostfixOp::FieldAccess(name),
+            });
 
         let postfixed = unary
-            .then(call_suffix.or(index_suffix).or(method_suffix).repeated())
+            .then(call_suffix.or(index_suffix).or(dot_suffix).repeated())
             .foldl(|base, op| match op {
                 PostfixOp::Call(args, tol) => Expr::Call {
                     func: Box::new(base),
@@ -192,6 +211,10 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                     receiver: Box::new(base),
                     method,
                     args,
+                },
+                PostfixOp::FieldAccess(field) => Expr::FieldAccess {
+                    object: Box::new(base),
+                    field,
                 },
             });
 
@@ -298,6 +321,64 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             body,
             tol_param,
         });
+    
+            // Field declaration inside struct: `let name`
+        let struct_field = just(Token::Let)
+            .ignore_then(select! { Token::Ident(s) => s });
+
+        // Method inside struct: reuse fn_def parser shape
+        let struct_method = just(Token::Fn)
+            .ignore_then(select! { Token::Ident(s) => s })
+            .then(
+                select! { Token::Ident(s) => s }
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+            )
+            .then(
+                just(Token::Tilde)
+                    .ignore_then(select! { Token::Ident(s) => s })
+                    .or_not(),
+            )
+            .then(block.clone())
+            .map(|(((name, params), tol_param), body)| Stmt::FnDef {
+                name,
+                params,
+                body,
+                tol_param,
+            });
+
+        // A struct member is either a field or a method
+        enum StructMember {
+            Field(String),
+            Method(Stmt),
+        }
+
+        let struct_member = struct_field.map(StructMember::Field)
+            .or(struct_method.map(StructMember::Method));
+
+        let nl_s = nl.clone();
+        let nl_s2 = nl.clone();
+
+        let struct_def = just(Token::Struct)
+            .ignore_then(select! { Token::Ident(s) => s })
+            .then(
+                nl_s.ignore_then(struct_member)
+                    .then_ignore(nl_s2)
+                    .repeated()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+            )
+            .map(|(name, members)| {
+                let mut fields = Vec::new();
+                let mut methods = Vec::new();
+                for m in members {
+                    match m {
+                        StructMember::Field(f) => fields.push(f),
+                        StructMember::Method(s) => methods.push(s),
+                    }
+                }
+                Stmt::StructDef { name, fields, methods }
+            });
 
     // loop { body }
     let loop_stmt = just(Token::Loop)
@@ -320,6 +401,7 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             .or(return_stmt)
             .or(if_stmt)
             .or(fn_def)
+            .or(struct_def)
             .or(loop_stmt)
             .or(break_stmt)
             .or(assign_stmt)

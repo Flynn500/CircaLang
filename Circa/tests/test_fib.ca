@@ -20,4 +20,20 @@ fn fib(n) {
     return b
 }
 
-print(fib(64.0))
+
+let fib_target = 10
+
+let a = 0
+let b = 1
+let i = 0
+
+loop {
+    if i > fib_target { break }
+
+    let temp = a + b
+    a = b
+    b = temp
+
+    i = i + 1
+}
+print(b)

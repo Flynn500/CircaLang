@@ -21,6 +21,12 @@ pub enum Stmt {
         tol_param: Option<String>,
     },
 
+    StructDef {
+        name: String,
+        fields: Vec<String>,
+        methods: Vec<Stmt>,
+    },
+
     /// `return expr`
     Return {
         value: Expr,
@@ -113,6 +119,18 @@ pub enum Expr {
         receiver: Box<Expr>,
         method: String,
         args: Vec<Expr>,
+    },
+
+    /// Struct instantiation: `Foo { a = 1.0, b = 2.0 }`
+    StructInit {
+        name: String,
+        fields: Vec<(String, Expr)>,
+    },
+
+    /// Field access: `instance.field`
+    FieldAccess {
+        object: Box<Expr>,
+        field: String,
     },
 }
 

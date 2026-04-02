@@ -66,18 +66,22 @@ print(d)    // 5.0 ~= ...
 Some functions can accept a precision target with `~tol_variable`. This value functions similarly to a standard variable, with the caveat that the tolerance of the return value is automatically set to this value. The goal of a tolerance aware function is to do as little work as possible to achieve a result within `tol`.
 
 ```
-fn solve(f, a, b) ~tol {
-    // Brent's method, iterates until |f(b)| <= tol
-    // ...
-    return b    // return value automatically carries ~= tol
+//an example of a simple tolerence aware function that estimates the value of pi. 
+fn estimate_pi() ~tol {
+    let n = 1.0 / tol
+    let sum = 0.0
+    let i = 0
+    let sign = 1.0
+
+    loop {
+        sum = sum + sign / (2.0 * i + 1.0)
+        sign = sign * -1.0
+        i = i + 1
+        if i >= n { break }
+    }
+
+    return sum * 4.0
 }
-
-// Find sqrt(2) to different precisions
-let rough = solve(fn(x) { x*x - 2.0 }, 0.0, 2.0) ~tol 0.1
-print(rough)    // 1.4190476 ~= 0.1
-
-let exact = solve(fn(x) { x*x - 2.0 }, 0.0, 2.0) ~tol 0.001
-print(exact)    // 1.4140716 ~= 0.001
 ```
 
 The `~tol` parameter does two things: it controls how hard the function works internally, and the return value is automatically tagged with that tolerance. Same code, different precision, different compute cost.
@@ -88,6 +92,71 @@ If a function can't meet the requested tolerance because the input values are to
 let noisy = 1.0 ~ 0.5
 let y = sin(noisy) ~tol 0.01   // panic: input uncertainty exceeds requested tol
 ```
+
+## Loops
+
+Currently Circa only supports `loop` & `break` however while and for loops can be easily emulated.
+```
+let fib_target = 10
+
+let a = 0
+let b = 1
+let i = 0
+
+loop {
+    if i > fib_target { break }
+
+    let temp = a + b
+    a = b
+    b = temp
+
+    i = i + 1
+}
+print(b)
+```
+## Structs
+
+We can define a struct using the `struct` keyword. Variables are declared using the let keyword, while struct methods are declared be defining functions within the struct body. Struct methods require a `self` parameter.
+
+```
+struct Point {
+    let x
+    let y
+
+    fn magnitude(self)~tol {
+        return sqrt(self.x * self.x + self.y * self.y) ~tol
+    }
+
+    fn add(self, other) {
+        return new Point { x = self.x + other.x, y = self.y + other.y }
+    }
+}
+```
+
+We create structs using the `new` keyword. Struct methods and variables support tolerence in the same way functions and standard variables do.
+
+```
+let noisy = new Point { x = 3.0 ~ 0.1, y = 4.0 ~ 0.1 }
+print(noisy.magnitude() ~ 0.05)
+```
+
+## Vectors & Matrices
+
+We can define vectors using the let keyword. Like all variables, vector elements can also carry tolerence. 
+
+```
+let v = [1.0 ~ 0.1, 2.0, 3.0]
+let x = v[0]
+
+//we can push elements to vectors
+v.push(4 ~ 0.1)
+
+//and extend a vector using other vectors
+let v2 = [5,6,7]
+v.extend(v2)
+```
+
+Matrices are still in development.
 
 ## Standard Library
 
@@ -115,4 +184,4 @@ Most numerical code computes everything to machine precision whether you need it
 - Final results for a report? Tighten to `~tol 0.00001`.
 - Same code, same functions, different precision budget.
 
-Tolerance on values tells you what you actually know. A sensor reading of `9.81 ~= 0.05` is more honest than a bare `9.81`, and Circa tracks that honesty through every operation.
+Tolerance on values tells you what you actually know. A sensor reading of `9.81 ~= 0.05` is more honest than a bare `9.81`, and Circa tracks that honesty through every operation. You can pipe together a series of operations, apporixmating where applicable and the resulting value is gauranteed to be within its tolerence threshold of the true result.

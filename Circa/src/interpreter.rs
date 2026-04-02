@@ -140,6 +140,31 @@ impl Interpreter {
                 Ok(None)
             }
 
+            Stmt::StructDef { name, fields, methods } => {
+                let mut method_values = Vec::new();
+                for m in methods {
+                    match m {
+                        Stmt::FnDef { name, params, body, tol_param } => {
+                            let func = Value::Func {
+                                name: Rc::from(name.as_str()),
+                                params: Rc::from(params.as_slice()),
+                                body: Rc::from(body.as_slice()),
+                                tol_param: tol_param.as_deref().map(Rc::from),
+                            };
+                            method_values.push((name.clone(), func));
+                        }
+                        _ => return Err("struct body must contain only field declarations and methods".into()),
+                    }
+                }
+                let def = Value::StructDef {
+                    name: Rc::from(name.as_str()),
+                    fields: Rc::from(fields.as_slice()),
+                    methods: Rc::from(method_values),
+                };
+                self.env.define(name.clone(), def);
+                Ok(None)
+            }
+
             Stmt::Break => Ok(Some(Signal::Break)),
 
             Stmt::ExprStmt(expr) => {
@@ -179,6 +204,54 @@ impl Interpreter {
                 let lhs = self.eval_expr(left)?;
                 let rhs = self.eval_expr(right)?;
                 self.eval_binop(&lhs, op, &rhs)
+            }
+
+            Expr::StructInit { name, fields: init_fields } => {
+                let def = self.env.get(name)
+                    .cloned()
+                    .ok_or(format!("undefined struct: {}", name))?;
+
+                match def {
+                    Value::StructDef { fields: def_fields, name: sname, .. } => {
+                        let mut field_values: Vec<(String, Value)> = Vec::new();
+
+                        // Start with all fields defaulting to None
+                        for f in def_fields.iter() {
+                            field_values.push((f.clone(), Value::None));
+                        }
+
+                        // Apply provided values
+                        for (fname, fexpr) in init_fields {
+                            let val = self.eval_expr(fexpr)?;
+                            let entry = field_values.iter_mut().find(|(k, _)| k == fname);
+                            match entry {
+                                Some(e) => e.1 = val,
+                                None => return Err(format!(
+                                    "{}: unknown field '{}'", sname, fname
+                                )),
+                            }
+                        }
+
+                        Ok(Value::StructInstance {
+                            struct_name: sname,
+                            fields: field_values,
+                        })
+                    }
+                    other => Err(format!("{} is not a struct", other)),
+                }
+            }
+
+            Expr::FieldAccess { object, field } => {
+                let val = self.eval_expr(object)?;
+                match val {
+                    Value::StructInstance { fields, .. } => {
+                        fields.iter()
+                            .find(|(k, _)| k == field)
+                            .map(|(_, v)| v.clone())
+                            .ok_or(format!("no field '{}' on struct", field))
+                    }
+                    other => Err(format!("{} has no fields", other)),
+                }
             }
 
             Expr::Call { func, args, tolerance } => {
@@ -457,6 +530,66 @@ impl Interpreter {
 
         match &receiver {
             Value::Vector(_) => self.eval_vector_method(receiver_expr, receiver, method, args),
+            Value::StructInstance { struct_name, fields } => {
+                // Look up the struct def to find the method
+                let def = self.env.get(struct_name.as_ref())
+                    .cloned()
+                    .ok_or(format!("undefined struct: {}", struct_name))?;
+
+                match def {
+                    Value::StructDef { methods, .. } => {
+                        let method_val = methods.iter()
+                            .find(|(n, _)| n == method)
+                            .map(|(_, v)| v.clone())
+                            .ok_or(format!("{} has no method '{}'", struct_name, method))?;
+
+                        // Call the method with `self` (the instance) as the first arg
+                        match method_val {
+                            Value::Func { params, body, name, tol_param } => {
+                                if args.len() + 1 != params.len() {
+                                    return Err(format!(
+                                        "{}.{}: expected {} args (besides self), got {}",
+                                        struct_name, method, params.len() - 1, args.len()
+                                    ));
+                                }
+
+                                self.env.push_scope();
+
+                                // Bind self as first param
+                                self.env.define(params[0].clone(), receiver);
+
+                                // Bind remaining params
+                                for (param, arg) in params[1..].iter().zip(args) {
+                                    self.env.define(param.clone(), arg);
+                                }
+
+                                if let Some(ref pname) = tol_param {
+                                    self.env.define(pname.as_ref().to_string(), Value::None);
+                                }
+
+                                let mut result = Value::Bool(false);
+                                for s in body.iter() {
+                                    match self.exec_stmt(s)? {
+                                        Some(Signal::Return(val)) => {
+                                            result = val;
+                                            break;
+                                        }
+                                        Some(Signal::Break) => {
+                                            return Err("break outside of loop".into());
+                                        }
+                                        None => {}
+                                    }
+                                }
+
+                                self.env.pop_scope();
+                                Ok(result)
+                            }
+                            _ => Err(format!("{}.{} is not a function", struct_name, method)),
+                        }
+                    }
+                    _ => Err(format!("{} is not a struct", struct_name)),
+                }
+            }
             other => Err(format!("{} has no methods", other)),
         }
     }

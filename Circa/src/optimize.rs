@@ -23,17 +23,22 @@ fn optimize_stmt(stmt: Stmt) -> Stmt {
         },
         Stmt::If { condition, then_body, else_body } => Stmt::If {
             condition: optimize_expr(condition),
-            then_body: then_body.into_iter().map(optimize_stmt).collect(),
-            else_body: else_body.map(|b| b.into_iter().map(optimize_stmt).collect()),
+            then_body: eliminate_dead_code(then_body.into_iter().map(optimize_stmt).collect()),
+            else_body: else_body.map(|eb| eliminate_dead_code(eb.into_iter().map(optimize_stmt).collect()))
         },
         Stmt::FnDef { name, params, body, tol_param } => Stmt::FnDef {
             name,
             params,
-            body: body.into_iter().map(optimize_stmt).collect(),
+            body: eliminate_dead_code(body.into_iter().map(optimize_stmt).collect()),
             tol_param,
         },
+        Stmt::StructDef { name, fields, methods } => Stmt::StructDef {
+            name,
+            fields,
+            methods: methods.into_iter().map(optimize_stmt).collect(),
+        },
         Stmt::Loop { body } => Stmt::Loop {
-            body: body.into_iter().map(optimize_stmt).collect(),
+            body: eliminate_dead_code(body.into_iter().map(optimize_stmt).collect()),
         },
         Stmt::ExprStmt(expr) => Stmt::ExprStmt(optimize_expr(expr)),
         Stmt::Break => Stmt::Break,
@@ -71,8 +76,18 @@ fn recurse_expr(expr: Expr) -> Expr {
         },
         Expr::Lambda { params, body, tol_param } => Expr::Lambda {
             params,
-            body: body.into_iter().map(optimize_stmt).collect(),
+            body: eliminate_dead_code(body.into_iter().map(optimize_stmt).collect()),
             tol_param,
+        },
+        Expr::StructInit { name, fields } => Expr::StructInit {
+            name,
+            fields: fields.into_iter()
+                .map(|(k, v)| (k, optimize_expr(v)))
+                .collect(),
+        },
+        Expr::FieldAccess { object, field } => Expr::FieldAccess {
+            object: Box::new(optimize_expr(*object)),
+            field,
         },
         Expr::VecLiteral(elems) => Expr::VecLiteral(
             elems.into_iter().map(optimize_expr).collect(),
@@ -139,4 +154,17 @@ fn try_fold(a: f64, op: &BinOp, b: f64) -> Option<Expr> {
         BinOp::Lte => Some(Expr::Bool(a <= b)),
         BinOp::Gte => Some(Expr::Bool(a >= b)),
     }
+}
+
+/// Remove statements after an unconditional return or break.
+fn eliminate_dead_code(body: Vec<Stmt>) -> Vec<Stmt> {
+    let mut result = Vec::new();
+    for stmt in body {
+        let is_terminal = matches!(&stmt, Stmt::Return { .. } | Stmt::Break);
+        result.push(stmt);
+        if is_terminal {
+            break;
+        }
+    }
+    result
 }

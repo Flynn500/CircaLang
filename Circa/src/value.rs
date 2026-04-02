@@ -28,6 +28,17 @@ pub enum Value {
         func: NativeFn,
         guarantees_tol: bool,
     },
+    /// A struct definition (blueprint): holds field names and methods.
+    StructDef {
+        name: Rc<str>,
+        fields: Rc<[String]>,
+        methods: Rc<[(String, Value)]>,  // (method_name, Value::Func)
+    },
+    /// A struct instance: holds the struct name and field values.
+    StructInstance {
+        struct_name: Rc<str>,
+        fields: Vec<(String, Value)>,
+    },
     /// A vector of values.
     Vector(Vec<Value>),
     /// None value — represents absence of a value (used for optional tolerance).
@@ -83,6 +94,14 @@ impl fmt::Display for Value {
             Value::Number { val, tol: None } => write!(f, "{}", val),
             Value::Bool(b) => write!(f, "{}", if *b { "True" } else { "False" }),
             Value::Func { name, .. } => write!(f, "<fn {}>", name),
+            Value::StructDef { name, .. } => write!(f, "<struct {}>", name),
+            Value::StructInstance { struct_name, fields } => {
+                let parts: Vec<String> = fields
+                    .iter()
+                    .map(|(k, v)| format!("{} = {}", k, v))
+                    .collect();
+                write!(f, "{} {{ {} }}", struct_name, parts.join(", "))
+            },
             Value::NativeFunc { name, .. } => write!(f, "<native fn {}>", name),
             Value::Vector(elems) => {
                 let parts: Vec<String> = elems.iter().map(|v| v.to_string()).collect();

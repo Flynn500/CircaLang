@@ -44,6 +44,11 @@ pub enum Token {
     #[token("None")]
     None,
 
+    #[token("new")]
+    New,
+    #[token("struct")]
+    Struct,
+
     // Literals
     #[regex(r"[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?", |lex| lex.slice().parse::<f64>().ok().map(F64))]
     Number(F64),

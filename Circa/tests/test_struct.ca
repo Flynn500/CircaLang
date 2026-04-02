@@ -1,0 +1,40 @@
+struct Point {
+    let x
+    let y
+
+    fn magnitude(self)~tol {
+        return sqrt(self.x * self.x + self.y * self.y) ~tol
+    }
+
+    fn add(self, other) {
+        return new Point { x = self.x + other.x, y = self.y + other.y }
+    }
+}
+
+// Basic construction
+let p = new Point { x = 3.0, y = 4.0 }
+print(p)
+print(p.x)
+
+
+// Partial construction, z defaults to None
+struct Vec3 {
+    let x
+    let y
+    let z
+}
+
+let v = new Vec3 { x = 1.0, y = 2.0 }
+print(v.z)
+
+// Method returning a new struct
+let a = new Point { x = 1.0, y = 2.0 }
+let b = new Point { x = 3.0, y = 4.0 }
+let c = a.add(b)
+print(c.x)
+print(c.y)
+
+
+// Tolerance on fields
+let noisy = new Point { x = 3.0 ~ 0.1, y = 4.0 ~ 0.1 }
+print(noisy.magnitude() ~ 0.05)
