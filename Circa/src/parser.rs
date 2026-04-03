@@ -388,6 +388,11 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
     // break
     let break_stmt = just(Token::Break).map(|_| Stmt::Break);
 
+    // import name
+    let import_stmt = just(Token::Import)
+        .ignore_then(select! { Token::Ident(s) => s })
+        .map(|name| Stmt::Import { name });
+
     // name = expr  (reassignment, no `let`)
     let assign_stmt = select! { Token::Ident(s) => s }
         .then_ignore(just(Token::Assign))
@@ -404,6 +409,7 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             .or(struct_def)
             .or(loop_stmt)
             .or(break_stmt)
+            .or(import_stmt)
             .or(assign_stmt)
             .or(expr_stmt),
     );

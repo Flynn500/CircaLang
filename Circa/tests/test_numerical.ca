@@ -1,3 +1,5 @@
+import math
+
 // Test solve
 print(solve(fn(x) { return x * x - 2.0 }, 0.0, 2.0) ~ 0.001)
 print(solve(fn(x) { return x * x - 2.0 }, 0.0, 2.0) ~ 0.0001)

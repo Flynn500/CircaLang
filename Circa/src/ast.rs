@@ -51,6 +51,9 @@ pub enum Stmt {
     /// `break` — exits the innermost loop
     Break,
 
+    /// `import name` — pull in a module (stdlib or local file)
+    Import { name: String },
+
     /// An expression used as a statement (e.g. a bare function call)
     ExprStmt(Expr),
 }

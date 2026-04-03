@@ -21,19 +21,4 @@ fn fib(n) {
 }
 
 
-let fib_target = 10
-
-let a = 0
-let b = 1
-let i = 0
-
-loop {
-    if i > fib_target { break }
-
-    let temp = a + b
-    a = b
-    b = temp
-
-    i = i + 1
-}
-print(b)
+print(fib(10))

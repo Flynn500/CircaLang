@@ -34,7 +34,6 @@ let c = a.add(b)
 print(c.x)
 print(c.y)
 
-
 // Tolerance on fields
 let noisy = new Point { x = 3.0 ~ 0.1, y = 4.0 ~ 0.1 }
 print(noisy.magnitude() ~ 0.05)

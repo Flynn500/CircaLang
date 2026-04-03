@@ -1,4 +1,6 @@
 // test_tier1.ca
+import math
+
 
 // === sqrt ===
 let s1 = sqrt(4.0) ~0.001

@@ -1,123 +1,255 @@
-let pi = 3.14159265358979
-
-fn abs(x) {
-    if x < 0.0 {
-        return -x
-    }
-    return x
+fn __cos_approx(x) {
+    return 1.0 - x*x/2.0 + x*x*x*x/24.0
 }
 
-fn max(a, b) {
-    if a > b {
-        return a
-    }
-    return b
+fn __sin_approx(x) {
+    return x - x*x*x/6.0 + x*x*x*x*x/120.0
 }
 
-fn min(a, b) {
-    if a < b {
-        return a
-    }
-    return b
-}
-
-fn sqrt(n) ~tol {
-    if n < 0.0 {
-        panic(1.0)
-    }
-
+fn sin(x) ~tol {
     let target = 1E-7
+    let propagated = tolerance(x) * abs(__cos_approx(x))
     if tol {
-        let rough = (n + 1.0) / 2.0
-        let propagated = tolerance(n) / (2.0 * rough)
-        if propagated > tol {
-            panic(0)
+        target = tol
+        if propagated > target {
+            panic(4.0)
         }
-        target = tol - propogated
     }
-    
-    let x = n
-    loop {
-        let next = (x + n / x) / 2.0
-        if abs(next - x) <= target {
-            return next
-        }
-        x = next
-    }
-}
 
-fn __exp_approx(x) {
-    return 1.0 + x + x*x/2.0 + x*x*x/6.0
-}
-
-fn exp(x) ~tol {
-    let target = 1E-7
-    if tol {
-        let propagated = tolerance(x) * abs(__exp_approx(x))
-        if propagated > tol {
-            panic(0)
-        }
-        target = tol - propogated
-    }
-    
     let result = 0.0
-    let term = 1.0
+    let term = x
     let i = 1.0
     loop {
         result = result + term
-        term = term * x / i
-        i = i + 1.0
-        if abs(term) <= target {
+        term = 0.0 - term * x * x / ((i + 1.0) * (i + 2.0))
+        i = i + 2.0
+        if abs(term) <= target - propagated {
             return result
         }
     }
 }
 
-fn ln(x) ~tol {
-    if x <= 0.0 {
-        panic(0)
-    }
-
+fn cos(x) ~tol {
     let target = 1E-7
+    let propagated = tolerance(x) * abs(__sin_approx(x))
     if tol {
-        let propagated = tolerance(x) / abs(x)
-        if propagated > tol {
-            panic(0)
+        target = tol
+        if propagated > target {
+            panic(5.0)
         }
-        target = tol - propogated
     }
 
-    let k = 0.0
-    let m = x
-    loop {
-        if m <= 2.0 { break }
-        m = m / 2.0
-        k = k + 1.0
-    }
-    loop {
-        if m >= 1.0 { break }
-        m = m * 2.0
-        k = k - 1.0
-    }
-
-    let t = m - 1.0
     let result = 0.0
-    let term = t
-    let i = 1.0
+    let term = 1.0
+    let i = 0.0
     loop {
-        result = result + term / i
-        term = 0.0 - term * t
-        i = i + 1.0
-        if abs(term / i) <= target {
-            return result + k * 0.6931471805599453
+        result = result + term
+        term = 0.0 - term * x * x / ((i + 1.0) * (i + 2.0))
+        i = i + 2.0
+        if abs(term) <= target - propagated {
+            return result
         }
     }
 }
 
-fn pow(base, exponent) ~tol {
-    if base <= 0.0 {
+fn tan(x) ~tol {
+    let c = cos(x) ~ tol
+    if abs(c) <= tol {
         panic(0)
     }
-    
-    return exp(exponent * ln(base) ~ tol) ~ tol
+    return sin(x) ~ tol / c
+}
+
+fn asin(x) ~tol {
+    if x < 0.0 - 1.0 {
+        panic(0)
+    }
+    if x > 1.0 {
+        panic(0)
+    }
+    return solve(fn(s) { sin(s) ~ tol - x }, 0.0 - 1.5708, 1.5708) ~ tol
+}
+
+fn acos(x) ~tol {
+    if x < 0.0 - 1.0 {
+        panic(0)
+    }
+    if x > 1.0 {
+        panic(0)
+    }
+    return solve(fn(c) { cos(c) ~ tol - x }, 0.0, 3.1415926) ~ tol
+}
+
+fn atan2(y, x) ~tol {
+    if abs(x) <= tol {
+        if y > 0.0 {
+            return 1.5707963
+        }
+        return 0.0 - 1.5707963
+    }
+    let angle = solve(fn(a) { tan(a) ~ tol - y / x }, 0.0 - 1.5707, 1.5707) ~ tol
+    return angle
+}
+
+
+fn differentiate(f, x) ~tol {
+    let target = 1E-5
+    if tol {
+        target = tol
+    }
+
+    let propagated = tolerance(x)
+    if propagated > target {
+        panic(0)
+    }
+    let target = target - propagated
+
+    let x = snap(x)
+    let h = 0.1
+    let prev = (f(x + h) - f(x - h)) / (2.0 * h)
+
+    loop {
+        h = h / 2.0
+        let curr = (f(x + h) - f(x - h)) / (2.0 * h)
+        if abs(curr - prev) <= target {
+            return curr
+        }
+        prev = curr
+    }
+}
+
+fn integrate(f, a, b) ~tol {
+    let target = 1E-5
+    if tol {
+        target = tol
+    }
+
+    let ta = tolerance(a)
+    let tb = tolerance(b)
+    if ta + tb > target {
+        panic(0)
+    }
+    let target = target - ta - tb
+    let a = snap(a)
+    let b = snap(b)
+
+    let n = 2.0
+    let h = (b - a) / n
+    let prev = (f(a) + f(b)) / 2.0 * (b - a)
+
+    loop {
+        n = n * 2.0
+        h = (b - a) / n
+        let sum = (f(a) + f(b)) / 2.0
+        let i = 1.0
+        loop {
+            sum = sum + f(a + i * h)
+            i = i + 1.0
+            if i >= n { break }
+        }
+        let curr = sum * h
+        if abs(curr - prev) <= target {
+            return curr
+        }
+        prev = curr
+    }
+}
+
+fn solve(f, a, b) ~tol {
+    let target = 1E-5
+    if tol {
+        target = tol
+    }
+
+    let ta = tolerance(a)
+    let tb = tolerance(b)
+    a = snap(a)
+    b = snap(b)
+    if a < b {
+        a = a - ta
+        b = b + tb
+    } else {
+        a = a + ta
+        b = b - tb
+    }
+
+    let fa = f(a)
+    let fb = f(b)
+
+    if abs(fa) < abs(fb) {
+        let tmp = a
+        a = b
+        b = tmp
+        let tmp2 = fa
+        fa = fb
+        fb = tmp2
+    }
+
+    let c = a
+    let fc = fa
+    let d = b - a
+    let e = d
+    let mflag = 1.0
+
+    loop {
+        if abs(fb) <= target {
+            return b
+        }
+        if abs(b - a) <= target {
+            return b
+        }
+
+        let s = 0.0
+        if abs(fa - fc) > target {
+            if abs(fb - fc) > target {
+                let r = fb / fc
+                let q = fa / fc
+                let p = fb / fa
+                s = b + (p * (q * (r - q) * (c - b) - (1.0 - r) * (b - a))) / ((q - 1.0) * (r - 1.0) * (p - 1.0))
+            } else {
+                s = b - fb * (b - a) / (fb - fa)
+            }
+        } else {
+            s = b - fb * (b - a) / (fb - fa)
+        }
+
+        let mid = (a + b) / 2.0
+
+        let use_bisection = 0.0
+        if s < mid {
+            if s < b {
+                use_bisection = 1.0
+            }
+        } else {
+            if s > b {
+                use_bisection = 1.0
+            }
+        }
+
+        if use_bisection > 0.5 {
+            s = mid
+        }
+
+        let fs = f(s)
+
+        c = b
+        fc = fb
+
+        if fa * fs < 0.0 {
+            b = s
+            fb = fs
+        } else {
+            a = s
+            fa = fs
+        }
+
+        if abs(fa) < abs(fb) {
+            let tmp = a
+            a = b
+            b = tmp
+            let tmp2 = fa
+            fa = fb
+            fb = tmp2
+        }
+    }
 }

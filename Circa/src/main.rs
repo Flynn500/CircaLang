@@ -4,14 +4,14 @@ mod env;
 mod interpreter;
 mod lexer;
 mod parser;
+mod resolver;
 mod value;
 mod optimize;
 
 use std::env as std_env;
 use std::fs;
+use std::path::Path;
 use std::time::Instant;
-
-include!(concat!(env!("OUT_DIR"), "/stdlib.rs"));
 
 fn main() {
     let start = Instant::now();
@@ -38,7 +38,7 @@ fn main() {
         }
     };
 
-    let program = match parser::parse(tokens) {
+    let mut program = match parser::parse(tokens) {
         Ok(p) => p,
         Err(errs) => {
             for e in errs {
@@ -48,31 +48,31 @@ fn main() {
         }
     };
 
-    let stdlib_tokens = match parser::lex(STDLIB_SRC) {
-        Ok(t) => t,
-        Err(errs) => {
-            for e in errs {
-                eprintln!("Stdlib lex error: {:?}", e);
-            }
+    // Always import prelude first
+    program.insert(0, ast::Stmt::Import { name: "prelude".into() });
+
+    // Resolve all imports (prelude + user imports + transitive imports)
+    let base_dir = Path::new(filename)
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
+
+    let resolved = match resolver::resolve(program, &base_dir) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Import error: {}", e);
             std::process::exit(1);
         }
     };
 
-    let full_program = match parser::parse(stdlib_tokens) {
-        Ok(p) => p,
-        Err(errs) => {
-            for e in errs {
-                eprintln!("Stdlib parse error: {:?}", e);
-            }
-            std::process::exit(1);
-        }
-    };
-    
-    let mut full_program = optimize::optimize(full_program);
+    let full_program = optimize::optimize(resolved.program);
 
-    full_program.extend(program);
+    let mut interp = interpreter::Interpreter::new_empty();
+    // Register native builtins for each imported module
+    for module in &resolved.imported_modules {
+        builtins::register_module_builtins(&mut interp.env, module);
+    }
 
-    let mut interp = interpreter::Interpreter::new();
     if let Err(e) = interp.run(&full_program) {
         eprintln!("Runtime error: {}", e);
         std::process::exit(1);

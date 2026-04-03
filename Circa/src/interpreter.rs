@@ -14,14 +14,20 @@ enum Signal {
 }
 
 pub struct Interpreter {
-    env: Env,
+    pub env: Env,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         let mut env = Env::new();
-        builtins::register_builtins(&mut env);
+        builtins::register_module_builtins(&mut env, "prelude");
         Interpreter { env }
+    }
+
+    /// Create an interpreter with no builtins registered.
+    /// Use this when the resolver handles builtin registration.
+    pub fn new_empty() -> Self {
+        Interpreter { env: Env::new() }
     }
 
     /// Run a full program.
@@ -166,6 +172,9 @@ impl Interpreter {
             }
 
             Stmt::Break => Ok(Some(Signal::Break)),
+
+            // Imports are resolved before interpretation; none should remain.
+            Stmt::Import { .. } => unreachable!("unresolved import"),
 
             Stmt::ExprStmt(expr) => {
                 self.eval_expr(expr)?;

@@ -1,17 +1,26 @@
 use crate::env::Env;
 use crate::value::{NativeFn, Value};
 
-/// Register all built-in native functions into the given environment.
-pub fn register_builtins(env: &mut Env) {
-    let builtins: &[(&'static str, usize, NativeFn, bool)] = &[
-        ("tolerance", 1, builtin_tolerance, false),
-        ("panic",     1, builtin_panic,     false),
-        ("print",     1, builtin_print,     false),
-        ("snap",      1, builtin_snap,      false),
-        ("len",       1, builtin_len,       false),
-    ];
+/// Return the list of native builtins that belong to a given module.
+/// Unknown module names return an empty slice (user files have no native builtins).
+fn builtins_for_module(module: &str) -> &'static [(&'static str, usize, NativeFn, bool)] {
+    match module {
+        "prelude" => &[
+            ("tolerance", 1, builtin_tolerance, false),
+            ("panic",     1, builtin_panic,     false),
+            ("print",     1, builtin_print,     false),
+            ("snap",      1, builtin_snap,      false),
+            ("len",       1, builtin_len,       false),
+        ],
+        // "trig" => &[ ("sin", 1, builtin_sin, false), ... ],
+        // "math" => &[ ... ],
+        _ => &[],
+    }
+}
 
-    for &(name, arity, func, guarantees_tol) in builtins {
+/// Register the native builtins for a specific module into the environment.
+pub fn register_module_builtins(env: &mut Env, module: &str) {
+    for &(name, arity, func, guarantees_tol) in builtins_for_module(module) {
         env.define(name.to_string(), Value::NativeFunc { name, arity, func, guarantees_tol });
     }
 }

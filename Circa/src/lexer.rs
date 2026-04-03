@@ -44,6 +44,9 @@ pub enum Token {
     #[token("None")]
     None,
 
+    #[token("import")]
+    Import,
+
     #[token("new")]
     New,
     #[token("struct")]

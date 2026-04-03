@@ -42,6 +42,7 @@ fn optimize_stmt(stmt: Stmt) -> Stmt {
         },
         Stmt::ExprStmt(expr) => Stmt::ExprStmt(optimize_expr(expr)),
         Stmt::Break => Stmt::Break,
+        Stmt::Import { .. } => unreachable!("unresolved import"),
     }
 }
 

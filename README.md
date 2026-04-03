@@ -12,14 +12,14 @@ circa --run main.ca
 
 Values in Circa can carry a tolerance with the `~` operator:
 
-```
+```rust
 let x = 3.14 ~ 0.01      // x is 3.14, known to ±0.01
 let y = 9.81               // y is exact (tolerance = 0)
 ```
 
 Tolerance propagates through arithmetic automatically:
 
-```
+```rust
 let a = 10.0 ~ 0.1
 let b = 20.0 ~ 0.2
 
@@ -32,7 +32,7 @@ print(a * b)    // 200 ~ 3.0  (product rule: |a|*tol(b) + |b|*tol(a))
 
 Regular functions work as expected. Tolerance flows through them via normal arithmetic:
 
-```
+```rust
 fn kinetic_energy(mass, velocity) {
     return 0.5 * mass * velocity * velocity
 }
@@ -46,7 +46,7 @@ print(ke)   // 9.0 ~ 0.75
 
 No special syntax needed, the tolerance on `m` and `v` propagates through the multiplication automatically.
 
-```
+```rust
 fn distance(x1, y1, x2, y2) {
     let dx = x2 - x1
     let dy = y2 - y1
@@ -65,7 +65,7 @@ print(d)    // 5.0 ~= ...
 
 Some functions can accept a precision target with `~tol_variable`. This value functions similarly to a standard variable, with the caveat that the tolerance of the return value is automatically set to this value. The goal of a tolerance aware function is to do as little work as possible to achieve a result within `tol`.
 
-```
+```rust
 //an example of a simple tolerence aware function that estimates the value of pi. 
 fn estimate_pi() ~tol {
     let n = 1.0 / tol
@@ -88,7 +88,7 @@ The `~tol` parameter does two things: it controls how hard the function works in
 
 If a function can't meet the requested tolerance because the input values are too uncertain, it panics:
 
-```
+```rust
 let noisy = 1.0 ~ 0.5
 let y = sin(noisy) ~tol 0.01   // panic: input uncertainty exceeds requested tol
 ```
@@ -96,7 +96,7 @@ let y = sin(noisy) ~tol 0.01   // panic: input uncertainty exceeds requested tol
 ## Loops
 
 Currently Circa only supports `loop` & `break` however while and for loops can be easily emulated.
-```
+```rust
 let fib_target = 10
 
 let a = 0
@@ -118,7 +118,7 @@ print(b)
 
 We can define a struct using the `struct` keyword. Variables are declared using the let keyword, while struct methods are declared be defining functions within the struct body. Struct methods require a `self` parameter.
 
-```
+```rust
 struct Point {
     let x
     let y
@@ -135,7 +135,7 @@ struct Point {
 
 We create structs using the `new` keyword. Struct methods and variables support tolerence in the same way functions and standard variables do.
 
-```
+```rust
 let noisy = new Point { x = 3.0 ~ 0.1, y = 4.0 ~ 0.1 }
 print(noisy.magnitude() ~ 0.05)
 ```
@@ -144,7 +144,7 @@ print(noisy.magnitude() ~ 0.05)
 
 We can define vectors using the let keyword. Like all variables, vector elements can also carry tolerence. 
 
-```
+```rust
 let v = [1.0 ~ 0.1, 2.0, 3.0]
 let x = v[0]
 
@@ -158,11 +158,23 @@ v.extend(v2)
 
 Matrices are still in development.
 
+## Modules
+
+A module in Circa is just a file. Using the `import` keyword, you can import Circa files in the same directory as the main file, or modules from the standard library. Circula imports aren't an issue in Circa, but function names and constants must be unique across multiple modules in a project. 
+
+```rust
+import foo
+
+print(bar(50))
+```
+
 ## Standard Library
 
 The standard library provides tolerance-aware implementations of common math functions. Each one adapts its algorithm (Taylor series terms, Newton iterations, etc.) to do the minimum work needed to meet the requested `~tol`:
 
-```
+```rust
+import math
+
 let x = 1.0
 
 print(sqrt(2.0) ~tol 0.0001)        // 1.4142135 ~= 0.0001
