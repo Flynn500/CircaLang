@@ -28,6 +28,7 @@ pub fn register_module_builtins(env: &mut Env, module: &str) {
 fn builtin_tolerance(args: &[Value], _caller_tol: Option<f64>) -> Result<Value, String> {
     match &args[0] {
         Value::Number { tol, .. } => Ok(Value::number(tol.unwrap_or(0.0))),
+        Value::Integer(_) => Ok(Value::number(0.0)),
         other => Err(format!("tolerance: expected a number, got {}", other)),
     }
 }
@@ -44,13 +45,15 @@ fn builtin_print(args: &[Value], _caller_tol: Option<f64>) -> Result<Value, Stri
 fn builtin_snap(args: &[Value], _caller_tol: Option<f64>) -> Result<Value, String> {
     match &args[0] {
         Value::Number { val, .. } => Ok(Value::number(*val)),
+        Value::Integer(i) => Ok(Value::number(*i as f64)),
         other => Err(format!("snap: expected a number, got {}", other)),
     }
 }
 
 fn builtin_len(args: &[Value], _caller_tol: Option<f64>) -> Result<Value, String> {
     match &args[0] {
-        Value::Vector(elems) => Ok(Value::number(elems.len() as f64)),
-        other => Err(format!("len: expected a vector, got {}", other)),
+        Value::Vector(elems) => Ok(Value::Integer(elems.len() as i64)),
+        Value::String(s) => Ok(Value::Integer(s.len() as i64)),
+        other => Err(format!("len: expected a vector or string, got {}", other)),
     }
 }

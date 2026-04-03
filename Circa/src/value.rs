@@ -13,6 +13,10 @@ pub enum Value {
         val: f64,
         tol: Option<f64>,
     },
+    /// An integer (no tolerance).
+    Integer(i64),
+    /// A string.
+    String(String),
     Bool(bool),
     /// A user-defined function (captures param names + body).
     Func {
@@ -54,17 +58,60 @@ impl Value {
         Value::Number { val, tol: Some(tol) }
     }
 
-    /// Approximate equality: |a - b| <= tolerance.
-    /// Uses the tolerance from `other` if it has one (the RHS in `==`),
-    /// otherwise falls back to `self`'s tolerance, otherwise exact.
-    pub fn approx_eq(&self, other: &Value) -> Option<bool> {
+    /// Exact equality: values must be identical.
+    /// Treat `~ 0.0` as equivalent to no tolerance.
+    pub fn exact_eq(&self, other: &Value) -> Option<bool> {
         match (self, other) {
             (Value::Number { val: a, tol: tol_a }, Value::Number { val: b, tol: tol_b }) => {
-                let tolerance = tol_b.or(*tol_a).unwrap_or(0.0);
-                Some((a - b).abs() <= tolerance)
+                let ta = tol_a.unwrap_or(0.0);
+                let tb = tol_b.unwrap_or(0.0);
+                if ta != 0.0 || tb != 0.0 {
+                    return Some(false);
+                }
+                Some(a == b)
             }
+            (Value::Integer(a), Value::Integer(b)) => Some(a == b),
+            (Value::String(a), Value::String(b)) => Some(a == b),
             (Value::Bool(a), Value::Bool(b)) => Some(a == b),
             (Value::None, Value::None) => Some(true),
+            // int/float cross-comparison
+            (Value::Integer(i), Value::Number { val, tol }) |
+            (Value::Number { val, tol }, Value::Integer(i)) => {
+                if tol.unwrap_or(0.0) != 0.0 { return Some(false); }
+                Some(*val == *i as f64)
+            }
+            _ => None,
+        }
+    }
+
+    /// Possible equality: do the tolerance ranges overlap?
+    /// |a - b| <= tol_a + tol_b
+    pub fn maybe_eq(&self, other: &Value) -> Option<bool> {
+        match (self, other) {
+            (Value::Number { val: a, tol: tol_a }, Value::Number { val: b, tol: tol_b }) => {
+                let ta = tol_a.unwrap_or(0.0);
+                let tb = tol_b.unwrap_or(0.0);
+                Some((a - b).abs() <= ta + tb)
+            }
+            (Value::Integer(a), Value::Integer(b)) => Some(a == b),
+            (Value::String(a), Value::String(b)) => Some(a == b),
+            (Value::Bool(a), Value::Bool(b)) => Some(a == b),
+            (Value::None, Value::None) => Some(true),
+            // int/float cross-comparison
+            (Value::Integer(i), Value::Number { val, tol }) |
+            (Value::Number { val, tol }, Value::Integer(i)) => {
+                let tb = tol.unwrap_or(0.0);
+                Some((*val - *i as f64).abs() <= tb)
+            }
+            _ => None,
+        }
+    }
+
+    /// Extract value and tolerance as a pair.
+    pub fn as_f64_tol(&self) -> Option<(f64, f64)> {
+        match self {
+            Value::Number { val, tol } => Some((*val, tol.unwrap_or(0.0))),
+            Value::Integer(i) => Some((*i as f64, 0.0)),
             _ => None,
         }
     }
@@ -72,6 +119,7 @@ impl Value {
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             Value::Number { val, .. } => Some(*val),
+            Value::Integer(i) => Some(*i as f64),
             _ => None,
         }
     }
@@ -79,8 +127,9 @@ impl Value {
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             Value::Bool(b) => Some(*b),
-            // Truthy: non-zero numbers
             Value::Number { val, .. } => Some(*val != 0.0),
+            Value::Integer(i) => Some(*i != 0),
+            Value::String(s) => Some(!s.is_empty()),
             Value::None => Some(false),
             _ => None,
         }
@@ -92,6 +141,8 @@ impl fmt::Display for Value {
         match self {
             Value::Number { val, tol: Some(t) } => write!(f, "{} ~ {}", val, t),
             Value::Number { val, tol: None } => write!(f, "{}", val),
+            Value::Integer(i) => write!(f, "{}", i),
+            Value::String(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", if *b { "True" } else { "False" }),
             Value::Func { name, .. } => write!(f, "<fn {}>", name),
             Value::StructDef { name, .. } => write!(f, "<struct {}>", name),

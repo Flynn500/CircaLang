@@ -62,6 +62,8 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
 
         let expr = recursive(move |expr| {
         let number = select! { Token::Number(n) => Expr::Number(n.0) };
+        let integer = select! { Token::Integer(i) => Expr::Integer(i) };
+        let string_lit = select! { Token::StringLit(s) => Expr::StringLiteral(s) };
         let boolean = select! {
             Token::True => Expr::Bool(true),
             Token::False => Expr::Bool(false),
@@ -143,6 +145,8 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             .map(Expr::VecLiteral);
 
         let atom = number
+            .or(integer)
+            .or(string_lit)
             .or(boolean)
             .or(none)
             .or(lambda)
@@ -252,7 +256,14 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             .or(just(Token::Lte).to(BinOp::Lte))
             .or(just(Token::Gte).to(BinOp::Gte))
             .or(just(Token::Lt).to(BinOp::Lt))
-            .or(just(Token::Gt).to(BinOp::Gt));
+            .or(just(Token::Gt).to(BinOp::Gt))
+            .or(just(Token::MaybeEq).to(BinOp::MaybeEq))
+            .or(just(Token::MaybeNeq).to(BinOp::MaybeNeq))
+            .or(just(Token::MaybeNeq2).to(BinOp::MaybeNeq))
+            .or(just(Token::MaybeGte).to(BinOp::MaybeGte))
+            .or(just(Token::MaybeLte).to(BinOp::MaybeLte))
+            .or(just(Token::MaybeGt).to(BinOp::MaybeGt))
+            .or(just(Token::MaybeLt).to(BinOp::MaybeLt));
 
         sum.clone()
             .then(op.then(sum).or_not())
@@ -537,6 +548,39 @@ mod tests {
                 assert!(matches!(right.as_ref(), Expr::BinOp { op: BinOp::Mul, .. }));
             }
             other => panic!("expected Add(_, Mul(_, _)), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_integer_literal() {
+        let prog = parse_str("let x = 42");
+        match &prog[0] {
+            Stmt::Let { value, .. } => {
+                assert!(matches!(value, Expr::Integer(42)));
+            }
+            other => panic!("expected Let with Integer, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_float_literal() {
+        let prog = parse_str("let x = 42.0");
+        match &prog[0] {
+            Stmt::Let { value, .. } => {
+                assert!(matches!(value, Expr::Number(n) if *n == 42.0));
+            }
+            other => panic!("expected Let with Number, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_string_literal() {
+        let prog = parse_str(r#"let s = "hello""#);
+        match &prog[0] {
+            Stmt::Let { value, .. } => {
+                assert!(matches!(value, Expr::StringLiteral(s) if s == "hello"));
+            }
+            other => panic!("expected Let with StringLiteral, got {:?}", other),
         }
     }
 }

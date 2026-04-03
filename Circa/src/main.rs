@@ -67,7 +67,7 @@ fn main() {
 
     let full_program = optimize::optimize(resolved.program);
 
-    let mut interp = interpreter::Interpreter::new_empty();
+    let mut interp = interpreter::Interpreter::new();
     // Register native builtins for each imported module
     for module in &resolved.imported_modules {
         builtins::register_module_builtins(&mut interp.env, module);

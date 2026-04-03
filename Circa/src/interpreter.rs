@@ -18,15 +18,9 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
-    pub fn new() -> Self {
-        let mut env = Env::new();
-        builtins::register_module_builtins(&mut env, "prelude");
-        Interpreter { env }
-    }
-
     /// Create an interpreter with no builtins registered.
     /// Use this when the resolver handles builtin registration.
-    pub fn new_empty() -> Self {
+    pub fn new() -> Self {
         Interpreter { env: Env::new() }
     }
 
@@ -61,6 +55,7 @@ impl Interpreter {
                                 .ok_or("tolerance must be a number or None".to_string())?;
                             match result {
                                 Value::Number { val, .. } => Value::number_with_tol(val, tol_f32),
+                                Value::Integer(i) => Value::number_with_tol(i as f64, tol_f32),
                                 other => return Err(format!(
                                     "cannot apply tolerance to {}", other
                                 )),
@@ -188,6 +183,10 @@ impl Interpreter {
         match expr {
             Expr::Number(n) => Ok(Value::number(*n)),
 
+            Expr::Integer(i) => Ok(Value::Integer(*i)),
+
+            Expr::StringLiteral(s) => Ok(Value::String(s.clone())),
+
             Expr::Bool(b) => Ok(Value::Bool(*b)),
 
             Expr::None => Ok(Value::None),
@@ -205,6 +204,7 @@ impl Interpreter {
                     Value::Number { val, tol } => {
                         Ok(Value::Number { val: -val, tol })
                     }
+                    Value::Integer(i) => Ok(Value::Integer(-i)),
                     _ => Err("cannot negate non-number".into()),
                 }
             }
@@ -299,6 +299,7 @@ impl Interpreter {
                             .ok_or("tolerance must be a number or None".to_string())?;
                         match val {
                             Value::Number { val, .. } => Ok(Value::number_with_tol(val, tol_f64)),
+                            Value::Integer(i) => Ok(Value::number_with_tol(i as f64, tol_f64)),
                             _ => Err("cannot apply tolerance to non-number".into()),
                         }
                     }
@@ -320,11 +321,6 @@ impl Interpreter {
                 let vec_val = self.eval_expr(vec)?;
                 let idx_val = self.eval_expr(index)?;
 
-                let elems = match vec_val {
-                    Value::Vector(v) => v,
-                    other => return Err(format!("cannot index into {}", other)),
-                };
-
                 let idx_f = idx_val
                     .as_f64()
                     .ok_or_else(|| "index must be a number".to_string())?;
@@ -332,12 +328,23 @@ impl Interpreter {
                 if idx_f < 0.0 {
                     return Err(format!("index {} is negative", idx_f));
                 }
-
                 let idx = idx_f as usize;
-                let len = elems.len();
-                elems.get(idx)
-                    .cloned()
-                    .ok_or_else(|| format!("index {} out of bounds (len {})", idx, len))
+
+                match vec_val {
+                    Value::Vector(elems) => {
+                        let len = elems.len();
+                        elems.get(idx)
+                            .cloned()
+                            .ok_or_else(|| format!("index {} out of bounds (len {})", idx, len))
+                    }
+                    Value::String(s) => {
+                        let len = s.len();
+                        s.as_bytes().get(idx)
+                            .map(|&b| Value::String((b as char).to_string()))
+                            .ok_or_else(|| format!("index {} out of bounds (len {})", idx, len))
+                    }
+                    other => Err(format!("cannot index into {}", other)),
+                }
             }
         }
     }
@@ -458,12 +465,51 @@ impl Interpreter {
         match op {
             // Arithmetic — with tolerance propagation
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
+                // String concatenation: string + string
+                if let (Value::String(a), Value::String(b)) = (lhs, rhs) {
+                    return match op {
+                        BinOp::Add => Ok(Value::String(format!("{}{}", a, b))),
+                        _ => Err("strings only support + and *".into()),
+                    };
+                }
+
+                // String repetition: string * int or int * string
+                if matches!(op, BinOp::Mul) {
+                    match (lhs, rhs) {
+                        (Value::String(s), Value::Integer(n)) |
+                        (Value::Integer(n), Value::String(s)) => {
+                            if *n < 0 {
+                                return Err("cannot multiply string by negative".into());
+                            }
+                            return Ok(Value::String(s.repeat(*n as usize)));
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Pure integer arithmetic: int op int
+                if let (Value::Integer(a), Value::Integer(b)) = (lhs, rhs) {
+                    return match op {
+                        BinOp::Add => Ok(Value::Integer(a + b)),
+                        BinOp::Sub => Ok(Value::Integer(a - b)),
+                        BinOp::Mul => Ok(Value::Integer(a * b)),
+                        BinOp::Div => {
+                            if *b == 0 { return Err("division by zero".into()); }
+                            Ok(Value::Integer(a / b))
+                        }
+                        _ => unreachable!(),
+                    };
+                }
+
+                // Float or mixed int/float — promote to f64 with tolerance
                 let (a, tol_a) = match lhs {
                     Value::Number { val, tol } => (*val, tol.unwrap_or(0.0)),
+                    Value::Integer(i) => (*i as f64, 0.0),
                     _ => return Err("left operand must be a number".into()),
                 };
                 let (b, tol_b) = match rhs {
                     Value::Number { val, tol } => (*val, tol.unwrap_or(0.0)),
+                    Value::Integer(i) => (*i as f64, 0.0),
                     _ => return Err("right operand must be a number".into()),
                 };
 
@@ -494,29 +540,57 @@ impl Interpreter {
                 }
             }
 
-            // Comparisons — tolerance-aware via approx_eq
+            // Exact equality — values must match, treat ~0 as exact
             BinOp::Eq => {
-                let result = lhs.approx_eq(rhs).ok_or(
+                let result = lhs.exact_eq(rhs).ok_or(
                     "cannot compare these types".to_string(),
                 )?;
                 Ok(Value::Bool(result))
             }
             BinOp::Neq => {
-                let result = lhs.approx_eq(rhs).ok_or(
+                let result = lhs.exact_eq(rhs).ok_or(
                     "cannot compare these types".to_string(),
                 )?;
                 Ok(Value::Bool(!result))
             }
 
-            // Ordered comparisons (exact, no tolerance)
+            // Possible equality — do tolerance ranges overlap?
+            BinOp::MaybeEq => {
+                let result = lhs.maybe_eq(rhs).ok_or(
+                    "cannot compare these types".to_string(),
+                )?;
+                Ok(Value::Bool(result))
+            }
+            BinOp::MaybeNeq => {
+                let result = lhs.maybe_eq(rhs).ok_or(
+                    "cannot compare these types".to_string(),
+                )?;
+                Ok(Value::Bool(!result))
+            }
+
+            // Definite ordered comparisons — must hold even in worst case
             BinOp::Lt | BinOp::Gt | BinOp::Lte | BinOp::Gte => {
-                let a = lhs.as_f64().ok_or("left operand must be a number")?;
-                let b = rhs.as_f64().ok_or("right operand must be a number")?;
+                let (a, tol_a) = lhs.as_f64_tol().ok_or("left operand must be a number")?;
+                let (b, tol_b) = rhs.as_f64_tol().ok_or("right operand must be a number")?;
                 let result = match op {
-                    BinOp::Lt => a < b,
-                    BinOp::Gt => a > b,
-                    BinOp::Lte => a <= b,
-                    BinOp::Gte => a >= b,
+                    BinOp::Lt  => (a + tol_a) < (b - tol_b),
+                    BinOp::Gt  => (a - tol_a) > (b + tol_b),
+                    BinOp::Lte => (a + tol_a) <= (b - tol_b),
+                    BinOp::Gte => (a - tol_a) >= (b + tol_b),
+                    _ => unreachable!(),
+                };
+                Ok(Value::Bool(result))
+            }
+
+            // Possible ordered comparisons — could be true for some value in range
+            BinOp::MaybeLt | BinOp::MaybeGt | BinOp::MaybeLte | BinOp::MaybeGte => {
+                let (a, tol_a) = lhs.as_f64_tol().ok_or("left operand must be a number")?;
+                let (b, tol_b) = rhs.as_f64_tol().ok_or("right operand must be a number")?;
+                let result = match op {
+                    BinOp::MaybeLt  => (a - tol_a) < (b + tol_b),
+                    BinOp::MaybeGt  => (a + tol_a) > (b - tol_b),
+                    BinOp::MaybeLte => (a - tol_a) <= (b + tol_b),
+                    BinOp::MaybeGte => (a + tol_a) >= (b - tol_b),
                     _ => unreachable!(),
                 };
                 Ok(Value::Bool(result))
@@ -539,6 +613,7 @@ impl Interpreter {
 
         match &receiver {
             Value::Vector(_) => self.eval_vector_method(receiver_expr, receiver, method, args),
+            Value::String(_) => self.eval_string_method(receiver, method, args),
             Value::StructInstance { struct_name, fields } => {
                 // Look up the struct def to find the method
                 let def = self.env.get(struct_name.as_ref())
@@ -684,6 +759,58 @@ impl Interpreter {
                 }
             }
             _ => Err("cannot mutate a temporary value; assign to a variable first".into()),
+        }
+    }
+
+    /// Handle methods on strings: len, slice, upper, lower, trim, contains, split.
+    fn eval_string_method(
+        &self,
+        receiver: Value,
+        method: &str,
+        args: Vec<Value>,
+    ) -> Result<Value, String> {
+        let s = match &receiver {
+            Value::String(s) => s,
+            _ => unreachable!(),
+        };
+
+        match method {
+            "len" => {
+                if !args.is_empty() { return Err("len: expected 0 arguments".into()); }
+                Ok(Value::Integer(s.len() as i64))
+            }
+            "upper" => {
+                if !args.is_empty() { return Err("upper: expected 0 arguments".into()); }
+                Ok(Value::String(s.to_uppercase()))
+            }
+            "lower" => {
+                if !args.is_empty() { return Err("lower: expected 0 arguments".into()); }
+                Ok(Value::String(s.to_lowercase()))
+            }
+            "trim" => {
+                if !args.is_empty() { return Err("trim: expected 0 arguments".into()); }
+                Ok(Value::String(s.trim().to_string()))
+            }
+            "contains" => {
+                if args.len() != 1 { return Err("contains: expected 1 argument".into()); }
+                match &args[0] {
+                    Value::String(sub) => Ok(Value::Bool(s.contains(sub.as_str()))),
+                    other => Err(format!("contains: expected a string, got {}", other)),
+                }
+            }
+            "split" => {
+                if args.len() != 1 { return Err("split: expected 1 argument".into()); }
+                match &args[0] {
+                    Value::String(delim) => {
+                        let parts: Vec<Value> = s.split(delim.as_str())
+                            .map(|p| Value::String(p.to_string()))
+                            .collect();
+                        Ok(Value::Vector(parts))
+                    }
+                    other => Err(format!("split: expected a string, got {}", other)),
+                }
+            }
+            other => Err(format!("string has no method '{}'", other)),
         }
     }
 }

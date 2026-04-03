@@ -1,9 +1,8 @@
 // test_tier1.ca
 import math
 
-
 // === sqrt ===
-let s1 = sqrt(4.0) ~0.001
+let s1 = sqrt(4.0 ) ~0.001
 print(s1)
 // expect: 2.0 ~ 0.001
 

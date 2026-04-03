@@ -53,8 +53,15 @@ pub enum Token {
     Struct,
 
     // Literals
-    #[regex(r"[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?", |lex| lex.slice().parse::<f64>().ok().map(F64))]
+    #[regex(r"[0-9]+[eE][+-]?[0-9]+", |lex| lex.slice().parse::<f64>().ok().map(F64), priority = 3)]
+    #[regex(r"[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?", |lex| lex.slice().parse::<f64>().ok().map(F64), priority = 3)]
     Number(F64),
+
+    #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok(), priority = 2)]
+    Integer(i64),
+
+    #[regex(r#""[^"]*""#, |lex| { let s = lex.slice(); Some(s[1..s.len()-1].to_string()) })]
+    StringLit(String),
 
     // Identifiers
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", priority = 1, callback = |lex| lex.slice().to_string())]
@@ -77,6 +84,22 @@ pub enum Token {
     Lt,
     #[token(">")]
     Gt,
+
+    // Possible comparison operators
+    #[token("?=")]
+    MaybeEq,
+    #[token("?!=")]
+    MaybeNeq,
+    #[token("!?=")]
+    MaybeNeq2,
+    #[token("?>")]
+    MaybeGt,
+    #[token("?<")]
+    MaybeLt,
+    #[token("?>=")]
+    MaybeGte,
+    #[token("?<=")]
+    MaybeLte,
 
     // Arithmetic
     #[token("+")]
@@ -187,5 +210,25 @@ mod tests {
             .collect();
 
         assert_eq!(tokens, vec![Token::Number(F64(1e-10))]);
+    }
+
+    #[test]
+    fn test_integer_literal() {
+        let input = "42";
+        let tokens: Vec<_> = Token::lexer(input)
+            .map(|t| t.unwrap())
+            .collect();
+
+        assert_eq!(tokens, vec![Token::Integer(42)]);
+    }
+
+    #[test]
+    fn test_string_literal() {
+        let input = r#""hello world""#;
+        let tokens: Vec<_> = Token::lexer(input)
+            .map(|t| t.unwrap())
+            .collect();
+
+        assert_eq!(tokens, vec![Token::StringLit("hello world".into())]);
     }
 }

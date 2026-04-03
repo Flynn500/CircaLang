@@ -64,6 +64,12 @@ pub enum Expr {
     /// Numeric literal: `0.1`, `1E-10`
     Number(f64),
 
+    /// Integer literal: `42`, `0`
+    Integer(i64),
+
+    /// String literal: `"hello"`
+    StringLiteral(String),
+
     /// Boolean literal
     Bool(bool),
 
@@ -149,6 +155,13 @@ pub enum BinOp {
     Gt,
     Lte,
     Gte,
+    // "Possible" comparisons — true if tolerance ranges allow it
+    MaybeEq,
+    MaybeNeq,
+    MaybeLt,
+    MaybeGt,
+    MaybeLte,
+    MaybeGte,
 }
 
 #[derive(Debug, Clone)]

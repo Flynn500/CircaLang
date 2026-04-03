@@ -25,8 +25,39 @@ let b = 20.0 ~ 0.2
 
 print(a + b)    // 30 ~ 0.3
 print(a + 5.0)  // 15 ~ 0.1   (exact values don't add uncertainty)
-print(a * b)    // 200 ~ 3.0  (product rule: |a|*tol(b) + |b|*tol(a))
+print(a * b)    // 200 ~ 4.0  (product rule: |a|*tol(b) + |b|*tol(a))
 ```
+
+We can compare values in Circa using standard comparison operators `<`, `==` etc. The expression `a > b` will return true if `a` is gauranteed to be greater than `b`. Circa also includes the addition `?` operator, which can be paired with any of the standard comparison operators and will evaluate to true if the expression could be true given the tolerence of inputs.
+
+```rust
+let a = 1 ~ 0.5
+let b = 1.2 ~ 0.5
+
+//this will return true, a could equal b
+print(a ?= b)
+
+//both of these could be true, so both return true
+print(a ?> b)
+print(b ?> a)
+
+//a and b are not gauranteed to be equal
+print(a == b)
+
+let c = 1 ~ 0.1
+let d = 1 ~ 0.1
+
+//false, even though these values identical, they are not gauranteed to be the same
+print(c == d)
+```
+
+## Types
+
+Circa currently supports the following primitive types:
+
+- Integer (i64)
+- Float (f64)
+- String
 
 ## Functions
 
@@ -60,6 +91,16 @@ fn distance(x1, y1, x2, y2) {
 let d = distance(0.0, 0.0, 3.0 ~= 0.1, 4.0 ~= 0.1)
 print(d)    // 5.0 ~= ...
 ```
+
+Circa also supports lambas, these can be declared in the same way functions with the name ommited.
+
+```rust
+import math
+
+//passing a lamda into our solve function
+let root = solve(fn(x) { return x * x - 2.0 }, 0.0, 5.0)
+```
+
 
 ## Tolerance-Aware Functions (`~tol`)
 

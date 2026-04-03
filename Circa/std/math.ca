@@ -12,7 +12,7 @@ fn sin(x) ~tol {
     if tol {
         target = tol
         if propagated > target {
-            panic(4.0)
+            panic("Tolerance x: " + tolerance(x) + " to great to reach target: " + tol)
         }
     }
 
@@ -90,7 +90,6 @@ fn atan2(y, x) ~tol {
     let angle = solve(fn(a) { tan(a) ~ tol - y / x }, 0.0 - 1.5707, 1.5707) ~ tol
     return angle
 }
-
 
 fn differentiate(f, x) ~tol {
     let target = 1E-5

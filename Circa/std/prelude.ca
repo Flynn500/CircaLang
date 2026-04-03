@@ -31,7 +31,7 @@ fn sqrt(n) ~tol {
         if propagated > tol {
             panic(0)
         }
-        target = tol - propogated
+        target = tol - propagated
     }
     
     let x = n
@@ -55,7 +55,7 @@ fn exp(x) ~tol {
         if propagated > tol {
             panic(0)
         }
-        target = tol - propogated
+        target = tol - propagated
     }
     
     let result = 0.0
@@ -82,7 +82,7 @@ fn ln(x) ~tol {
         if propagated > tol {
             panic(0)
         }
-        target = tol - propogated
+        target = tol - propagated
     }
 
     let k = 0.0

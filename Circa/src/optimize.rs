@@ -113,12 +113,54 @@ fn fold_constants(expr: Expr) -> Expr {
         Expr::BinOp { left, op, right } => {
             match (*left, *right) {
                 (Expr::Number(a), Expr::Number(b)) => {
-                    match try_fold(a, &op, b) {
+                    match try_fold_float(a, &op, b) {
                         Some(result) => result,
                         None => Expr::BinOp {
                             left: Box::new(Expr::Number(a)),
                             op,
                             right: Box::new(Expr::Number(b)),
+                        },
+                    }
+                }
+                (Expr::Integer(a), Expr::Integer(b)) => {
+                    match try_fold_int(a, &op, b) {
+                        Some(result) => result,
+                        None => Expr::BinOp {
+                            left: Box::new(Expr::Integer(a)),
+                            op,
+                            right: Box::new(Expr::Integer(b)),
+                        },
+                    }
+                }
+                // String concat: "a" + "b"
+                (Expr::StringLiteral(a), Expr::StringLiteral(b)) => {
+                    match op {
+                        BinOp::Add => Expr::StringLiteral(format!("{}{}", a, b)),
+                        _ => Expr::BinOp {
+                            left: Box::new(Expr::StringLiteral(a)),
+                            op,
+                            right: Box::new(Expr::StringLiteral(b)),
+                        },
+                    }
+                }
+                // String repeat: "a" * 3 or 3 * "a"
+                (Expr::StringLiteral(s), Expr::Integer(n)) => {
+                    match op {
+                        BinOp::Mul if n >= 0 => Expr::StringLiteral(s.repeat(n as usize)),
+                        _ => Expr::BinOp {
+                            left: Box::new(Expr::StringLiteral(s)),
+                            op,
+                            right: Box::new(Expr::Integer(n)),
+                        },
+                    }
+                }
+                (Expr::Integer(n), Expr::StringLiteral(s)) => {
+                    match op {
+                        BinOp::Mul if n >= 0 => Expr::StringLiteral(s.repeat(n as usize)),
+                        _ => Expr::BinOp {
+                            left: Box::new(Expr::Integer(n)),
+                            op,
+                            right: Box::new(Expr::StringLiteral(s)),
                         },
                     }
                 }
@@ -132,6 +174,7 @@ fn fold_constants(expr: Expr) -> Expr {
         Expr::Unary { op: UnaryOp::Neg, expr } => {
             match *expr {
                 Expr::Number(n) => Expr::Number(-n),
+                Expr::Integer(n) => Expr::Integer(-n),
                 other => Expr::Unary { op: UnaryOp::Neg, expr: Box::new(other) },
             }
         }
@@ -139,13 +182,13 @@ fn fold_constants(expr: Expr) -> Expr {
     }
 }
 
-fn try_fold(a: f64, op: &BinOp, b: f64) -> Option<Expr> {
+fn try_fold_float(a: f64, op: &BinOp, b: f64) -> Option<Expr> {
     match op {
         BinOp::Add => Some(Expr::Number(a + b)),
         BinOp::Sub => Some(Expr::Number(a - b)),
         BinOp::Mul => Some(Expr::Number(a * b)),
         BinOp::Div => {
-            if b == 0.0 { None } // don't fold div by zero, let runtime catch it
+            if b == 0.0 { None }
             else { Some(Expr::Number(a / b)) }
         }
         BinOp::Eq  => Some(Expr::Bool(a == b)),
@@ -154,6 +197,36 @@ fn try_fold(a: f64, op: &BinOp, b: f64) -> Option<Expr> {
         BinOp::Gt  => Some(Expr::Bool(a > b)),
         BinOp::Lte => Some(Expr::Bool(a <= b)),
         BinOp::Gte => Some(Expr::Bool(a >= b)),
+        BinOp::MaybeEq  => Some(Expr::Bool(a == b)),
+        BinOp::MaybeNeq => Some(Expr::Bool(a != b)),
+        BinOp::MaybeLt  => Some(Expr::Bool(a < b)),
+        BinOp::MaybeGt  => Some(Expr::Bool(a > b)),
+        BinOp::MaybeLte => Some(Expr::Bool(a <= b)),
+        BinOp::MaybeGte => Some(Expr::Bool(a >= b)),
+    }
+}
+
+fn try_fold_int(a: i64, op: &BinOp, b: i64) -> Option<Expr> {
+    match op {
+        BinOp::Add => Some(Expr::Integer(a + b)),
+        BinOp::Sub => Some(Expr::Integer(a - b)),
+        BinOp::Mul => Some(Expr::Integer(a * b)),
+        BinOp::Div => {
+            if b == 0 { None }
+            else { Some(Expr::Integer(a / b)) }
+        }
+        BinOp::Eq  => Some(Expr::Bool(a == b)),
+        BinOp::Neq => Some(Expr::Bool(a != b)),
+        BinOp::Lt  => Some(Expr::Bool(a < b)),
+        BinOp::Gt  => Some(Expr::Bool(a > b)),
+        BinOp::Lte => Some(Expr::Bool(a <= b)),
+        BinOp::Gte => Some(Expr::Bool(a >= b)),
+        BinOp::MaybeEq  => Some(Expr::Bool(a == b)),
+        BinOp::MaybeNeq => Some(Expr::Bool(a != b)),
+        BinOp::MaybeLt  => Some(Expr::Bool(a < b)),
+        BinOp::MaybeGt  => Some(Expr::Bool(a > b)),
+        BinOp::MaybeLte => Some(Expr::Bool(a <= b)),
+        BinOp::MaybeGte => Some(Expr::Bool(a >= b)),
     }
 }
 
