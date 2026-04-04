@@ -13,15 +13,15 @@ circa --run main.ca
 Values in Circa can carry a tolerance with the `~` operator:
 
 ```rust
-let x = 3.14 ~ 0.01      // x is 3.14, known to ±0.01
-let y = 9.81               // y is exact (tolerance = 0)
+let x: float = 3.14 ~ 0.01      // x is 3.14, known to ±0.01
+let y: float = 9.81               // y is exact (tolerance = 0)
 ```
 
 Tolerance propagates through arithmetic automatically:
 
 ```rust
-let a = 10.0 ~ 0.1
-let b = 20.0 ~ 0.2
+let a: float = 10.0 ~ 0.1
+let b: float = 20.0 ~ 0.2
 
 print(a + b)    // 30 ~ 0.3
 print(a + 5.0)  // 15 ~ 0.1   (exact values don't add uncertainty)
@@ -31,8 +31,8 @@ print(a * b)    // 200 ~ 4.0  (product rule: |a|*tol(b) + |b|*tol(a))
 We can compare values in Circa using standard comparison operators `<`, `==` etc. The expression `a > b` will return true if `a` is gauranteed to be greater than `b`. Circa also includes the addition `?` operator, which can be paired with any of the standard comparison operators and will evaluate to true if the expression could be true given the tolerence of inputs.
 
 ```rust
-let a = 1 ~ 0.5
-let b = 1.2 ~ 0.5
+let a: float = 1 ~ 0.5
+let b: float = 1.2 ~ 0.5
 
 //this will return true, a could equal b
 print(a ?= b)
@@ -44,8 +44,8 @@ print(b ?> a)
 //a and b are not gauranteed to be equal
 print(a == b)
 
-let c = 1 ~ 0.1
-let d = 1 ~ 0.1
+let c: float = 1 ~ 0.1
+let d: float = 1 ~ 0.1
 
 //false, even though these values identical, they are not gauranteed to be the same
 print(c == d)
@@ -64,23 +64,23 @@ Circa currently supports the following primitive types:
 Regular functions work as expected. Tolerance flows through them via normal arithmetic:
 
 ```rust
-fn kinetic_energy(mass, velocity) {
+fn kinetic_energy(mass: float, velocity: float) -> float {
     return 0.5 * mass * velocity * velocity
 }
 
-let m = 2.0 ~ 0.1
-let v = 3.0 ~ 0.05
+let m: float = 2.0 ~ 0.1
+let v: float = 3.0 ~ 0.05
 
-let ke = kinetic_energy(m, v)
+let ke: float = kinetic_energy(m, v)
 print(ke)   // 9.0 ~ 0.75
 ```
 
 No special syntax needed, the tolerance on `m` and `v` propagates through the multiplication automatically.
 
 ```rust
-fn distance(x1, y1, x2, y2) {
-    let dx = x2 - x1
-    let dy = y2 - y1
+fn distance(x1, y1, x2, y2) -> float {
+    let dx: float = x2 - x1
+    let dy: float = y2 - y1
     
     //sqrt is a tolerance-aware function from the standard library. its result is gauranteed 
     //to be within 0.001 of the true result, accounting for the uncertainty of its input params.
@@ -88,7 +88,7 @@ fn distance(x1, y1, x2, y2) {
     return sqrt(dx * dx + dy * dy) ~tol 0.001
 }
 
-let d = distance(0.0, 0.0, 3.0 ~ 0.1, 4.0 ~ 0.1)
+let d: float = distance(0.0, 0.0, 3.0 ~ 0.1, 4.0 ~ 0.1)
 print(d)    // 5.0 ~= ...
 ```
 
@@ -98,7 +98,7 @@ Circa also supports lambas, these can be declared in the same way functions with
 import math
 
 //passing a lamda into our solve function
-let root = solve(fn(x) { return x * x - 2.0 }, 0.0, 5.0)
+let root: float = solve(fn(x: : float) -> float { return x * x - 2.0 }, 0.0, 5.0)
 ```
 
 
@@ -108,11 +108,11 @@ Some functions can accept a precision target with `~tol_variable`. This value fu
 
 ```rust
 //an example of a simple tolerence aware function that estimates the value of pi. 
-fn estimate_pi() ~tol {
-    let n = 1.0 / tol
-    let sum = 0.0
-    let i = 0
-    let sign = 1.0
+fn estimate_pi() ~tol -> float {
+    let n: float = 1.0 / tol
+    let sum: float = 0.0
+    let i: int = 0
+    let sign: float = 1.0
 
     loop {
         sum = sum + sign / (2.0 * i + 1.0)
@@ -130,19 +130,19 @@ The `~tol` parameter does two things: it controls how hard the function works in
 If a function can't meet the requested tolerance because the input values are too uncertain, it panics:
 
 ```rust
-let noisy = 1.0 ~ 0.5
-let y = sin(noisy) ~tol 0.01   // panic: input uncertainty exceeds requested tol
+let noisy: float = 1.0 ~ 0.5
+let y: float = sin(noisy) ~tol 0.01   // panic: input uncertainty exceeds requested tol
 ```
 
 ## Loops
 
 Currently Circa only supports `loop` & `break` however while and for loops can be easily emulated.
 ```rust
-let fib_target = 10
+let fib_target: int = 10
 
-let a = 0
-let b = 1
-let i = 0
+let a: int = 0
+let b: int = 1
+let i: int = 0
 
 loop {
     if i > fib_target { break }
@@ -161,8 +161,8 @@ We can define a struct using the `struct` keyword. Variables are declared using 
 
 ```rust
 struct Point {
-    let x
-    let y
+    let x: float
+    let y: float
 
     fn magnitude(self)~tol {
         return sqrt(self.x * self.x + self.y * self.y) ~tol
@@ -177,7 +177,7 @@ struct Point {
 We create structs using the `new` keyword. Struct methods and variables support tolerence in the same way functions and standard variables do.
 
 ```rust
-let noisy = new Point { x = 3.0 ~ 0.1, y = 4.0 ~ 0.1 }
+let noisy: Point = new Point { x = 3.0 ~ 0.1, y = 4.0 ~ 0.1 }
 print(noisy.magnitude() ~ 0.05)
 ```
 
@@ -186,14 +186,14 @@ print(noisy.magnitude() ~ 0.05)
 We can define vectors using the let keyword. Like all variables, vector elements can also carry tolerence. 
 
 ```rust
-let v = [1.0 ~ 0.1, 2.0, 3.0]
-let x = v[0]
+let v: vec[float] = [1.0 ~ 0.1, 2.0, 3.0]
+let x: float = v[0]
 
 //we can push elements to vectors
 v.push(4 ~ 0.1)
 
 //and extend a vector using other vectors
-let v2 = [5,6,7]
+let v2: vec[float] = [5,6,7]
 v.extend(v2)
 ```
 
@@ -216,7 +216,7 @@ The standard library provides tolerance-aware implementations of common math fun
 ```rust
 import math
 
-let x = 1.0
+let x: float = 1.0
 
 print(sqrt(2.0) ~ 0.0001)        // 1.4142135 ~ 0.0001
 print(sin(x) ~ 0.01)             // 0.8333333 ~ 0.01

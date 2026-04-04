@@ -1,6 +1,6 @@
 use std::fmt;
 use std::rc::Rc;
-use crate::ast::Stmt;
+use crate::ast::{Stmt, TypeAnno};
 
 
 /// Signature for a native (Rust-implemented) Circa function.
@@ -20,12 +20,13 @@ pub enum Value {
     /// A string.
     String(String),
     Bool(bool),
-    /// A user-defined function (captures param names + body).
+    /// A user-defined function (captures typed params + body).
     Func {
         name: Rc<str>,
-        params: Rc<[String]>,
+        params: Rc<[(String, TypeAnno)]>,
         body: Rc<[Stmt]>,
         tol_param: Option<Rc<str>>,
+        return_type: TypeAnno,
     },
     /// A native (Rust-implemented) function.
     NativeFunc {
@@ -33,12 +34,13 @@ pub enum Value {
         arity: usize,
         func: NativeFn,
         guarantees_tol: bool,
+        ty: TypeAnno,
     },
 
-    /// A struct definition (blueprint): holds field names and methods.
+    /// A struct definition (blueprint): holds typed field names and methods.
     StructDef {
         name: Rc<str>,
-        fields: Rc<[String]>,
+        fields: Rc<[(String, TypeAnno)]>,
         methods: Rc<[(String, Value)]>,
     },
     /// A struct instance: holds the struct name and field values.
@@ -59,6 +61,29 @@ impl Value {
 
     pub fn number_with_tol(val: f64, tol: f64) -> Self {
         Value::Number { val, tol: Some(tol) }
+    }
+
+    pub fn runtime_type(&self) -> TypeAnno {
+        match self {
+            Value::Number { .. } => TypeAnno::Float,
+            Value::Integer(_) => TypeAnno::Int,
+            Value::String(_) => TypeAnno::Str,
+            Value::Bool(_) => TypeAnno::Bool,
+            Value::Func { params, return_type, .. } => TypeAnno::Fn {
+                params: params.iter().map(|(_, ty)| ty.clone()).collect(),
+                ret: Box::new(return_type.clone()),
+            },
+            Value::NativeFunc { ty, .. } => ty.clone(),
+            Value::StructDef { name, .. } => TypeAnno::Named(name.to_string()),
+            Value::StructInstance { struct_name, .. } => TypeAnno::Named(struct_name.to_string()),
+            Value::Vector(values) => {
+                let inner = values.first()
+                    .map(|v| v.runtime_type())
+                    .unwrap_or(TypeAnno::None);
+                TypeAnno::Vec(Box::new(inner))
+            }
+            Value::None => TypeAnno::None,
+        }
     }
 
     /// Exact equality: values must be identical.
@@ -135,6 +160,69 @@ impl Value {
             Value::String(s) => Some(!s.is_empty()),
             Value::None => Some(false),
             _ => None,
+        }
+    }
+}
+
+pub fn types_compatible(declared: &TypeAnno, actual: &TypeAnno) -> bool {
+    // Int is compatible with Float (promotion)
+    if matches!(declared, TypeAnno::Float) && matches!(actual, TypeAnno::Int) {
+        return true;
+    }
+
+    match (declared, actual) {
+        (TypeAnno::None, TypeAnno::None) => true,
+        (TypeAnno::AnyVec, TypeAnno::Vec(_)) => true,
+        (TypeAnno::Optional(_inner), TypeAnno::None) => true,
+        (TypeAnno::Optional(inner), TypeAnno::Optional(other)) => types_compatible(inner, other),
+        (TypeAnno::Optional(inner), other) => types_compatible(inner, other),
+
+        (TypeAnno::Int, TypeAnno::Int) => true,
+        (TypeAnno::Float, TypeAnno::Float) => true,
+        (TypeAnno::Bool, TypeAnno::Bool) => true,
+        (TypeAnno::Str, TypeAnno::Str) => true,
+        (TypeAnno::Named(a), TypeAnno::Named(b)) => a == b,
+        (TypeAnno::Vec(a), TypeAnno::Vec(b)) => {
+            matches!(**b, TypeAnno::None) || types_compatible(a, b)
+        }
+        (TypeAnno::Fn { params: pa, ret: ra }, TypeAnno::Fn { params: pb, ret: rb }) => {
+            pa.len() == pb.len()
+                && pa.iter().zip(pb.iter()).all(|(a, b)| types_compatible(a, b))
+                && types_compatible(ra, rb)
+        }
+        _ => false,
+    }
+}
+
+pub fn value_matches_type(value: &Value, expected: &TypeAnno) -> bool {
+    match expected {
+        TypeAnno::None => matches!(value, Value::None),
+        TypeAnno::AnyVec => matches!(value, Value::Vector(_)),
+        TypeAnno::Optional(inner) => matches!(value, Value::None) || value_matches_type(value, inner),
+        TypeAnno::Int => matches!(value, Value::Integer(_)),
+        TypeAnno::Float => matches!(value, Value::Number { .. } | Value::Integer(_)),
+        TypeAnno::Bool => matches!(value, Value::Bool(_)),
+        TypeAnno::Str => matches!(value, Value::String(_)),
+        TypeAnno::Named(name) => {
+            matches!(value,
+                Value::StructInstance { struct_name, .. } if struct_name.as_ref() == name
+            ) || matches!(value,
+                Value::StructDef { name: struct_name, .. } if struct_name.as_ref() == name
+            )
+        }
+        TypeAnno::Vec(inner) => match value {
+            Value::Vector(values) => values.iter().all(|v| value_matches_type(v, inner)),
+            _ => false,
+        },
+        TypeAnno::Fn { params, ret } => {
+            let actual = value.runtime_type();
+            types_compatible(
+                &TypeAnno::Fn {
+                    params: params.clone(),
+                    ret: ret.clone(),
+                },
+                &actual,
+            )
         }
     }
 }

@@ -69,7 +69,7 @@ fn main() {
     let full_program = optimize::optimize(resolved.program);
 
     // Type check
-    let type_errors = typecheck::typecheck(&full_program);
+    let type_errors = typecheck::typecheck(&full_program, &resolved.imported_modules);
     if !type_errors.is_empty() {
         for e in &type_errors {
             errors::report_runtime_error(e);

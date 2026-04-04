@@ -1,5 +1,6 @@
+import math
 fn fib(n: int) -> int {
-    if n <= 1.0 {
+    if n <= 1 {
         return n
     }
 
@@ -14,11 +15,11 @@ fn fib(n: int) -> int {
         a = b
         b = temp
 
-        i = i + 1.0
+        i = i + 1
     }
 
     return b
 }
 
 
-print(fib(64))
+print(" " + fib(64))

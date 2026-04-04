@@ -9,6 +9,11 @@ pub enum TypeAnno {
     Bool,
     Str,
     None,
+    /// Internal-only helper for builtins that accept any vector shape.
+    /// Not produced by the parser.
+    AnyVec,
+    /// Internal-only optional type, primarily for tolerance bindings.
+    Optional(Box<TypeAnno>),
     /// Homogeneous vector: `[float]`, `[int]`, etc.
     Vec(Box<TypeAnno>),
     /// Callable: `fn(float, float) -> float`
@@ -33,10 +38,11 @@ pub enum Stmt {
     },
 
     /// `fn name(x: float, y: float) ~tol -> float { body }`
-    /// Params are now (name, type). Return type defaults to None if omitted.
+    /// Params require explicit annotations during typecheck/interp construction.
+    /// Return type defaults to None if omitted.
     FnDef {
         name: String,
-        params: Vec<(String, TypeAnno)>,
+        params: Vec<(String, Option<TypeAnno>)>,
         body: Vec<Stmt>,
         tol_param: Option<String>,
         return_type: TypeAnno,
@@ -44,7 +50,7 @@ pub enum Stmt {
 
     StructDef {
         name: String,
-        fields: Vec<(String, TypeAnno)>,
+        fields: Vec<(String, Option<TypeAnno>)>,
         methods: Vec<Stmt>,
     },
 
@@ -113,7 +119,7 @@ pub enum Expr {
         expr: Box<Expr>,
     },
 
-    /// Function call: `f(args)` or `f(args) ~= tol_expr`
+    /// Function call: `f(args)` or `f(args) ~= tol`
     Call {
         func: Box<Expr>,
         args: Vec<Expr>,
@@ -128,7 +134,7 @@ pub enum Expr {
     },
 
     /// Anonymous function: `fn(x: float) -> float { body }`
-    /// Param types may be None when inferred from context (e.g. passed to a typed parameter).
+    /// Param types may be absent in the AST but are rejected during checking.
     Lambda {
         params: Vec<(String, Option<TypeAnno>)>,
         body: Vec<Stmt>,

@@ -1,254 +1,375 @@
-fn __cos_approx(x) {
-    return 1.0 - x*x/2.0 + x*x*x*x/24.0
-}
-
-fn __sin_approx(x) {
-    return x - x*x*x/6.0 + x*x*x*x*x/120.0
-}
-
-fn sin(x) ~tol {
-    let target = 1E-7
-    let propagated = tolerance(x) * abs(__cos_approx(x))
-    if tol {
-        target = tol
-        if propagated > target {
-            panic("Tolerance x: " + tolerance(x) + " to great to reach target: " + tol)
-        }
-    }
-
-    let result = 0.0
-    let term = x
-    let i = 1.0
-    loop {
-        result = result + term
-        term = 0.0 - term * x * x / ((i + 1.0) * (i + 2.0))
-        i = i + 2.0
-        if abs(term) <= target - propagated {
-            return result
-        }
-    }
-}
-
-fn cos(x) ~tol {
-    let target = 1E-7
-    let propagated = tolerance(x) * abs(__sin_approx(x))
-    if tol {
-        target = tol
-        if propagated > target {
-            panic(5.0)
-        }
-    }
-
-    let result = 0.0
-    let term = 1.0
-    let i = 0.0
-    loop {
-        result = result + term
-        term = 0.0 - term * x * x / ((i + 1.0) * (i + 2.0))
-        i = i + 2.0
-        if abs(term) <= target - propagated {
-            return result
-        }
-    }
-}
-
-fn tan(x) ~tol {
-    let c = cos(x) ~ tol
-    if abs(c) <= tol {
-        panic(0)
-    }
-    return sin(x) ~ tol / c
-}
-
-fn asin(x) ~tol {
-    if x < 0.0 - 1.0 {
-        panic(0)
-    }
-    if x > 1.0 {
-        panic(0)
-    }
-    return solve(fn(s) { sin(s) ~ tol - x }, 0.0 - 1.5708, 1.5708) ~ tol
-}
-
-fn acos(x) ~tol {
-    if x < 0.0 - 1.0 {
-        panic(0)
-    }
-    if x > 1.0 {
-        panic(0)
-    }
-    return solve(fn(c) { cos(c) ~ tol - x }, 0.0, 3.1415926) ~ tol
-}
-
-fn atan2(y, x) ~tol {
-    if abs(x) <= tol {
-        if y > 0.0 {
-            return 1.5707963
-        }
-        return 0.0 - 1.5707963
-    }
-    let angle = solve(fn(a) { tan(a) ~ tol - y / x }, 0.0 - 1.5707, 1.5707) ~ tol
-    return angle
-}
-
-fn differentiate(f, x) ~tol {
-    let target = 1E-5
+fn solve(f: fn(float) -> float, a: float, b: float) ~tol -> float {
+    let target: float = 1E-5
     if tol {
         target = tol
     }
 
-    let propagated = tolerance(x)
-    if propagated > target {
-        panic(0)
-    }
-    let target = target - propagated
+    let ta: float = tolerance(a)
+    let tb: float = tolerance(b)
 
-    let x = snap(x)
-    let h = 0.1
-    let prev = (f(x + h) - f(x - h)) / (2.0 * h)
+    let left: float = snap(a)
+    let right: float = snap(b)
 
-    loop {
-        h = h / 2.0
-        let curr = (f(x + h) - f(x - h)) / (2.0 * h)
-        if abs(curr - prev) <= target {
-            return curr
-        }
-        prev = curr
-    }
-}
-
-fn integrate(f, a, b) ~tol {
-    let target = 1E-5
-    if tol {
-        target = tol
-    }
-
-    let ta = tolerance(a)
-    let tb = tolerance(b)
-    if ta + tb > target {
-        panic(0)
-    }
-    let target = target - ta - tb
-    let a = snap(a)
-    let b = snap(b)
-
-    let n = 2.0
-    let h = (b - a) / n
-    let prev = (f(a) + f(b)) / 2.0 * (b - a)
-
-    loop {
-        n = n * 2.0
-        h = (b - a) / n
-        let sum = (f(a) + f(b)) / 2.0
-        let i = 1.0
-        loop {
-            sum = sum + f(a + i * h)
-            i = i + 1.0
-            if i >= n { break }
-        }
-        let curr = sum * h
-        if abs(curr - prev) <= target {
-            return curr
-        }
-        prev = curr
-    }
-}
-
-fn solve(f, a, b) ~tol {
-    let target = 1E-5
-    if tol {
-        target = tol
-    }
-
-    let ta = tolerance(a)
-    let tb = tolerance(b)
-    a = snap(a)
-    b = snap(b)
-    if a < b {
-        a = a - ta
-        b = b + tb
+    if left < right {
+        left = left - ta
+        right = right + tb
     } else {
-        a = a + ta
-        b = b - tb
+        left = left + ta
+        right = right - tb
     }
 
-    let fa = f(a)
-    let fb = f(b)
+    let fa: float = f(left)
+    let fb: float = f(right)
 
     if abs(fa) < abs(fb) {
-        let tmp = a
-        a = b
-        b = tmp
-        let tmp2 = fa
+        let tmp: float = left
+        left = right
+        right = tmp
+
+        let tmp2: float = fa
         fa = fb
         fb = tmp2
     }
 
-    let c = a
-    let fc = fa
-    let d = b - a
-    let e = d
-    let mflag = 1.0
+    let c: float = left
+    let fc: float = fa
 
     loop {
         if abs(fb) <= target {
-            return b
+            return right
         }
-        if abs(b - a) <= target {
-            return b
+        if abs(right - left) <= target {
+            return right
         }
 
-        let s = 0.0
+        let s: float = 0.0
+
         if abs(fa - fc) > target {
             if abs(fb - fc) > target {
-                let r = fb / fc
-                let q = fa / fc
-                let p = fb / fa
-                s = b + (p * (q * (r - q) * (c - b) - (1.0 - r) * (b - a))) / ((q - 1.0) * (r - 1.0) * (p - 1.0))
+                let r: float = fb / fc
+                let q: float = fa / fc
+                let p: float = fb / fa
+                s = right + (p * (q * (r - q) * (c - right) - (1.0 - r) * (right - left))) / ((q - 1.0) * (r - 1.0) * (p - 1.0))
             } else {
-                s = b - fb * (b - a) / (fb - fa)
+                s = right - fb * (right - left) / (fb - fa)
             }
         } else {
-            s = b - fb * (b - a) / (fb - fa)
+            s = right - fb * (right - left) / (fb - fa)
         }
 
-        let mid = (a + b) / 2.0
+        let mid: float = (left + right) / 2.0
+        let use_bisection: bool = false
 
-        let use_bisection = 0.0
         if s < mid {
-            if s < b {
-                use_bisection = 1.0
+            if s < right {
+                use_bisection = true
             }
         } else {
-            if s > b {
-                use_bisection = 1.0
+            if s > right {
+                use_bisection = true
             }
         }
 
-        if use_bisection > 0.5 {
+        if use_bisection {
             s = mid
         }
 
-        let fs = f(s)
+        let fs: float = f(s)
 
-        c = b
+        c = right
         fc = fb
 
         if fa * fs < 0.0 {
-            b = s
+            right = s
             fb = fs
         } else {
-            a = s
+            left = s
             fa = fs
         }
 
         if abs(fa) < abs(fb) {
-            let tmp = a
-            a = b
-            b = tmp
-            let tmp2 = fa
+            let tmp: float = left
+            left = right
+            right = tmp
+
+            let tmp2: float = fa
             fa = fb
             fb = tmp2
         }
     }
 }
+
+fn differentiate(f: fn(float) -> float, x: float) ~tol -> float {
+    let target: float = 1E-5
+    if tol {
+        target = tol - 0.0
+    }
+
+    let propagated: float = tolerance(x)
+    if propagated > target {
+        panic("tolerance(x) is too great to reach target: " + target)
+    }
+    target = target - propagated
+
+    let x0: float = snap(x)
+    let h: float = 0.1
+    let prev: float = (f(x0 + h) - f(x0 - h)) / (2.0 * h)
+
+    loop {
+        h = h / 2.0
+        let curr: float = (f(x0 + h) - f(x0 - h)) / (2.0 * h)
+        if abs(curr - prev) <= target {
+            return curr
+        }
+        prev = curr
+    }
+}
+
+
+
+fn integrate(f: fn(float) -> float, a: float, b: float) ~tol -> float {
+    let target: float = 1E-5
+    if tol {
+        target = tol
+    }
+
+    let ta: float = tolerance(a)
+    let tb: float = tolerance(b)
+    if ta + tb > target {
+        panic("integrate: input tolerance too large for target")
+    }
+
+    target = target - ta - tb
+
+    let a0: float = snap(a)
+    let b0: float = snap(b)
+
+    let n: int = 2
+    let h: float = (b0 - a0) / n
+    let prev: float = (f(a0) + f(b0)) / 2.0 * (b0 - a0)
+
+    loop {
+        n = n * 2
+        h = (b0 - a0) / n
+
+        let sum: float = (f(a0) + f(b0)) / 2.0
+        let i: int = 1
+        loop {
+            sum = sum + f(a0 + i * h)
+            i = i + 1
+            if i >= n { break }
+        }
+
+        let curr: float = sum * h
+        if abs(curr - prev) <= target {
+            return curr
+        }
+        prev = curr
+    }
+}
+
+fn sqrt(n: float) ~tol -> float {
+    if n < 0.0 {
+        panic("n must be greater than 0")
+    }
+
+    let target: float = 1E-7
+    if tol {
+        let rough: float = (n + 1.0) / 2.0
+        let propagated: float = tolerance(n) / (2.0 * rough)
+        if propagated > tol {
+            panic("Tolerance n: " + tolerance(n) + " too great to reach target: " + tol)
+        }
+        target = tol - propagated
+    }
+
+    let x: float = n
+    loop {
+        let next: float = (x + n / x) / 2.0
+        if abs(next - x) <= target {
+            return next
+        }
+        x = next
+    }
+}
+
+fn __exp_approx(x: float) -> float {
+    return 1.0 + x + x*x/2.0 + x*x*x/6.0
+}
+
+fn exp(x: float) ~tol -> float {
+    let target: float = 1E-7
+    if tol {
+        let propagated: float = tolerance(x) * abs(__exp_approx(x))
+        if propagated > tol {
+            panic("Tolerance x: " + tolerance(x) + " too great to reach target: " + tol)
+        }
+        target = tol - propagated
+    }
+
+    let result: float = 0.0
+    let term: float = 1.0
+    let i: int = 1
+    loop {
+        result = result + term
+        term = term * x / i
+        i = i + 1
+        if abs(term) <= target {
+            return result
+        }
+    }
+}
+
+fn ln(x: float) ~tol -> float {
+    if x <= 0.0 {
+        panic("x must be greater than 0")
+    }
+
+    let target: float = 1E-7
+    if tol {
+        let propagated: float = tolerance(x) / abs(x)
+        if propagated > tol {
+            panic("Tolerance x is too great to reach target: " + tol)
+        }
+        target = tol - propagated
+    }
+
+    let k: float = 0.0
+    let m: float = x
+    loop {
+        if m <= 2.0 { break }
+        m = m / 2.0
+        k = k + 1.0
+    }
+    loop {
+        if m >= 1.0 { break }
+        m = m * 2.0
+        k = k - 1.0
+    }
+
+    let t: float = m - 1.0
+    let result: float = 0.0
+    let term: float = t
+    let i: float = 1.0
+    loop {
+        result = result + term / i
+        term = 0.0 - term * t
+        i = i + 1.0
+        if abs(term / i) <= target {
+            return result + k * 0.6931471805599453
+        }
+    }
+}
+
+fn pow(base: float, exponent: float) ~tol -> float {
+    if base <= 0.0 {
+        panic("pow base must be greater than 0")
+    }
+
+    return exp(exponent * (ln(base) ~ tol)) ~ tol
+}
+
+
+fn __cos_approx(x: float) -> float {
+    return 1.0 - x*x/2.0 + x*x*x*x/24.0
+}
+
+fn __sin_approx(x: float) -> float {
+    return x - x*x*x/6.0 + x*x*x*x*x/120.0
+}
+
+fn sin(x: float) ~tol -> float {
+    let target: float = 1E-7
+    let propagated: float = tolerance(x) * abs(__cos_approx(x))
+    if tol {
+        target = tol - 0.0
+        if propagated > target {
+            panic("Tolerance x: " + tolerance(x) + " too great to reach target: " + tol)
+        }
+    }
+
+    let result: float = 0.0
+    let term: float = x
+    let i: float = 1.0
+    loop {
+        result = result + term
+        term = 0.0 - term * x * x / ((i + 1.0) * (i + 2.0))
+        i = i + 2.0
+        if abs(term) <= target - propagated {
+            return result
+        }
+    }
+}
+
+fn cos(x: float) ~tol -> float {
+    let target: float = 1E-7
+    let propagated: float = tolerance(x) * abs(__sin_approx(x))
+    if tol {
+        target = tol - 0.0
+        if propagated > target {
+            panic("Tolerance x: " + tolerance(x) + " too great to reach target: " + tol)
+        }
+    }
+
+    let result: float = 0.0
+    let term: float = 1.0
+    let i: float = 0.0
+    loop {
+        result = result + term
+        term = 0.0 - term * x * x / ((i + 1.0) * (i + 2.0))
+        i = i + 2.0
+        if abs(term) <= target - propagated {
+            return result
+        }
+    }
+}
+
+fn tan(x: float) ~tol -> float {
+    let c: float = cos(x) ~ tol
+    let min_cos: float = 1E-7
+    if tol {
+        min_cos = tol - 0.0
+    }
+    if abs(c) <= min_cos {
+        panic("tan undefined near odd multiples of pi/2")
+    }
+    return (sin(x) ~ tol) / c
+}
+
+fn asin(x: float) ~tol -> float {
+    if x < 0.0 - 1.0 {
+        panic("asin input must be >= -1")
+    }
+    if x > 1.0 {
+        panic("asin input must be <= 1")
+    }
+    return solve(fn(s: float) -> float { return (sin(s) ~ tol) - x }, 0.0 - 1.5708, 1.5708) ~ tol
+}
+
+fn acos(x: float) ~tol -> float {
+    if x < 0.0 - 1.0 {
+        panic("acos input must be >= -1")
+    }
+    if x > 1.0 {
+        panic("acos input must be <= 1")
+    }
+    return solve(fn(c: float) -> float { return (cos(c) ~ tol) - x }, 0.0, 3.1415926) ~ tol
+}
+
+fn atan2(y: float, x: float) ~tol -> float {
+    let min_x: float = 1E-7
+    if tol {
+        min_x = tol
+    }
+
+    if abs(x) <= min_x {
+        if y > 0.0 {
+            return 1.5707963
+        }
+        return 0.0 - 1.5707963
+    }
+
+    let angle: float = solve(fn(a: float) -> float { return (tan(a) ~ tol) - (y / x) }, 0.0 - 1.5707, 1.5707) ~ tol
+    return angle
+}
+

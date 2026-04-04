@@ -407,14 +407,14 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             else_body,
         });
 
-    // Typed param: `name: type` or just `name` (defaults to None)
+    // Typed param: `name: type` or just `name` (rejected later if omitted)
     let typed_param = select! { Token::Ident(s) => s }
         .then(
             just(Token::Colon)
                 .ignore_then(type_anno.clone())
                 .or_not(),
         )
-        .map(|(name, ty)| (name, ty.unwrap_or(TypeAnno::None)));
+        .map(|(name, ty)| (name, ty));
 
     // fn name(params) ~ident -> RetType { body }
     let fn_def = just(Token::Fn)
@@ -452,7 +452,7 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                     .ignore_then(type_anno.clone())
                     .or_not(),
             )
-            .map(|(name, ty)| (name, ty.unwrap_or(TypeAnno::None)));
+            .map(|(name, ty)| (name, ty));
 
         // Method inside struct: reuse fn_def parser shape
         let struct_method = just(Token::Fn)
@@ -484,7 +484,7 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
 
         // A struct member is either a field or a method
         enum StructMember {
-            Field((String, TypeAnno)),
+            Field((String, Option<TypeAnno>)),
             Method(Stmt),
         }
 

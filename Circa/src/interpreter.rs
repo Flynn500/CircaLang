@@ -1,9 +1,25 @@
 use std::rc::Rc;
 
 use crate::ast::*;
-use crate::builtins;
 use crate::env::Env;
-use crate::value::Value;
+use crate::value::{value_matches_type, Value};
+
+
+trait AnnotationRef {
+    fn resolve_or_none(&self) -> TypeAnno;
+}
+
+impl AnnotationRef for TypeAnno {
+    fn resolve_or_none(&self) -> TypeAnno {
+        self.clone()
+    }
+}
+
+impl AnnotationRef for Option<TypeAnno> {
+    fn resolve_or_none(&self) -> TypeAnno {
+        self.clone().unwrap_or(TypeAnno::None)
+    }
+}
 
 /// Signals that can interrupt normal statement flow.
 enum Signal {
@@ -44,29 +60,51 @@ impl Interpreter {
     /// Execute a statement. Returns Some(Signal) if flow was interrupted.
     fn exec_stmt(&mut self, stmt: &Stmt) -> Result<Option<Signal>, String> {
         match stmt {
-            Stmt::Let { name, value, .. } => {
+            Stmt::Let { name, type_anno, value, mutable } => {
                 let result = self.eval_expr(value)?;
-                self.env.define(name.clone(), result);
+                let Some(declared_type) = type_anno.clone() else {
+                    return Err(format!(
+                        "let {}: missing type annotation",
+                        name,
+                    ));
+                };
+
+                if !value_matches_type(&result, &declared_type) {
+                    return Err(format!(
+                        "type mismatch: '{}' declared as {:?}, got value of type {:?}",
+                        name,
+                        declared_type,
+                        result.runtime_type(),
+                    ));
+                }
+
+                self.env.define_value(name.clone(), result, declared_type, *mutable);
                 Ok(None)
             }
 
             Stmt::Assign { name, value } => {
                 let result = self.eval_expr(value)?;
-                if !self.env.assign(name, result) {
-                    return Err(format!("undefined variable: {}", name));
-                }
+                self.env.assign(name, result)?;
                 Ok(None)
             }
 
-            Stmt::FnDef { name, params, body, tol_param, .. } => {
-                let param_names: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
+            Stmt::FnDef { name, params, body, tol_param, return_type } => {
+                let typed_params: Vec<(String, TypeAnno)> = params.iter()
+                    .map(|(n, ty)| (n.clone(), ty.resolve_or_none()))
+                    .collect();
+                let resolved_return_type = return_type.resolve_or_none();
                 let func = Value::Func {
                     name: Rc::from(name.as_str()),
-                    params: Rc::from(param_names.as_slice()),
+                    params: Rc::from(typed_params.as_slice()),
                     body: Rc::from(body.as_slice()),
                     tol_param: tol_param.as_deref().map(Rc::from),
+                    return_type: resolved_return_type.clone(),
                 };
-                self.env.define(name.clone(), func);
+                let fn_type = TypeAnno::Fn {
+                    params: typed_params.iter().map(|(_, ty)| ty.clone()).collect(),
+                    ret: Box::new(resolved_return_type.clone()),
+                };
+                self.env.define_value(name.clone(), func, fn_type, false);
                 Ok(None)
             }
 
@@ -123,29 +161,34 @@ impl Interpreter {
             }
 
             Stmt::StructDef { name, fields, methods } => {
+                let typed_fields: Vec<(String, TypeAnno)> = fields.iter()
+                    .map(|(field_name, ty)| (field_name.clone(), ty.resolve_or_none()))
+                    .collect();
                 let mut method_values = Vec::new();
                 for m in methods {
                     match m {
-                        Stmt::FnDef { name, params, body, tol_param, .. } => {
-                            let param_names: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
+                        Stmt::FnDef { name, params, body, tol_param, return_type } => {
+                            let typed_params: Vec<(String, TypeAnno)> = params.iter()
+                                .map(|(n, ty)| (n.clone(), ty.resolve_or_none()))
+                                .collect();
                             let func = Value::Func {
                                 name: Rc::from(name.as_str()),
-                                params: Rc::from(param_names.as_slice()),
+                                params: Rc::from(typed_params.as_slice()),
                                 body: Rc::from(body.as_slice()),
                                 tol_param: tol_param.as_deref().map(Rc::from),
+                                return_type: return_type.resolve_or_none(),
                             };
                             method_values.push((name.clone(), func));
                         }
                         _ => return Err("struct body must contain only field declarations and methods".into()),
                     }
                 }
-                let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
                 let def = Value::StructDef {
                     name: Rc::from(name.as_str()),
-                    fields: Rc::from(field_names.as_slice()),
+                    fields: Rc::from(typed_fields.as_slice()),
                     methods: Rc::from(method_values),
                 };
-                self.env.define(name.clone(), def);
+                self.env.define_value(name.clone(), def, TypeAnno::Named(name.clone()), false);
                 Ok(None)
             }
 
@@ -205,23 +248,29 @@ impl Interpreter {
 
                 match def {
                     Value::StructDef { fields: def_fields, name: sname, .. } => {
-                        let mut field_values: Vec<(String, Value)> = Vec::new();
+                        let mut field_values: Vec<(String, Value)> = def_fields.iter()
+                            .map(|(field_name, _)| (field_name.clone(), Value::None))
+                            .collect();
 
-                        // Start with all fields defaulting to None
-                        for f in def_fields.iter() {
-                            field_values.push((f.clone(), Value::None));
-                        }
-
-                        // Apply provided values
+                        // Apply provided values with type checks
                         for (fname, fexpr) in init_fields {
                             let val = self.eval_expr(fexpr)?;
-                            let entry = field_values.iter_mut().find(|(k, _)| k == fname);
-                            match entry {
-                                Some(e) => e.1 = val,
-                                None => return Err(format!(
-                                    "{}: unknown field '{}'", sname, fname
-                                )),
+                            let (_, field_ty) = def_fields.iter()
+                                .find(|(k, _)| k == fname)
+                                .ok_or_else(|| format!("{}: unknown field '{}'", sname, fname))?;
+
+                            if !value_matches_type(&val, field_ty) {
+                                return Err(format!(
+                                    "{}.{} expects {:?}, got value of type {:?}",
+                                    sname,
+                                    fname,
+                                    field_ty,
+                                    val.runtime_type(),
+                                ));
                             }
+
+                            let entry = field_values.iter_mut().find(|(k, _)| k == fname).unwrap();
+                            entry.1 = val;
                         }
 
                         Ok(Value::StructInstance {
@@ -262,13 +311,16 @@ impl Interpreter {
                 self.eval_call(func, args, caller_tol)
             }
 
-            Expr::Lambda { params, body, tol_param, .. } => {
-                let param_names: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
+            Expr::Lambda { params, body, tol_param, return_type } => {
+                let typed_params: Vec<(String, TypeAnno)> = params.iter()
+                    .map(|(n, ty)| (n.clone(), ty.resolve_or_none()))
+                    .collect();
                 Ok(Value::Func {
                     name: Rc::from("<lambda>"),
-                    params: Rc::from(param_names.as_slice()),
+                    params: Rc::from(typed_params.as_slice()),
                     body: Rc::from(body.as_slice()),
                     tol_param: tol_param.as_deref().map(Rc::from),
+                    return_type: return_type.resolve_or_none(),
                 })
             }
 
@@ -357,7 +409,7 @@ impl Interpreter {
         caller_tol: Option<f64>,
     ) -> Result<Value, String> {
         match func {
-            Value::Func { params, body, name, tol_param } => {
+            Value::Func { params, body, name, tol_param, return_type } => {
                 if args.len() != params.len() {
                     return Err(format!(
                         "{}: expected {} args, got {}",
@@ -377,9 +429,21 @@ impl Interpreter {
 
                 self.env.push_scope();
 
-                // Bind parameters
-                for (param, arg) in params.iter().zip(args) {
-                    self.env.define(param.clone(), arg);
+                // Bind parameters with runtime type checks
+                for ((param_name, param_ty), arg) in params.iter().zip(args) {
+                    if !value_matches_type(&arg, param_ty) {
+                        self.env.pop_scope();
+                        self.call_stack.pop();
+                        return Err(format!(
+                            "{}: parameter '{}' expects {:?}, got value of type {:?}",
+                            name,
+                            param_name,
+                            param_ty,
+                            arg.runtime_type(),
+                        ));
+                    }
+
+                    self.env.define_value(param_name.clone(), arg, param_ty.clone(), true);
                 }
 
                 // Inject tolerance under the declared param name
@@ -388,11 +452,16 @@ impl Interpreter {
                         Some(t) => Value::number(t),
                         None => Value::None,
                     };
-                    self.env.define(param_name.as_ref().to_string(), tol_val);
+                    self.env.define_value(
+                        param_name.as_ref().to_string(),
+                        tol_val,
+                        TypeAnno::Optional(Box::new(TypeAnno::Float)),
+                        false,
+                    );
                 }
 
                 // Execute body
-                let mut result = Value::Bool(false); // default return
+                let mut result = Value::None; // default return for omitted/void returns
                 for s in body.iter() {
                     match self.exec_stmt(s)? {
                         Some(Signal::Return(val)) => {
@@ -406,6 +475,17 @@ impl Interpreter {
                         }
                         None => {}
                     }
+                }
+
+                if !value_matches_type(&result, &return_type) {
+                    self.env.pop_scope();
+                    self.call_stack.pop();
+                    return Err(format!(
+                        "{}: expected return type {:?}, got value of type {:?}",
+                        name,
+                        return_type,
+                        result.runtime_type(),
+                    ));
                 }
 
                 self.env.pop_scope();
@@ -423,7 +503,7 @@ impl Interpreter {
 
                 Ok(result)
             }
-            Value::NativeFunc { name, arity, func, guarantees_tol } => {
+            Value::NativeFunc { name, arity, func, guarantees_tol, .. } => {
                 if args.len() != arity {
                     return Err(format!(
                         "{}: expected {} args, got {}",
@@ -470,12 +550,11 @@ impl Interpreter {
         match op {
             // Arithmetic — with tolerance propagation
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                // String concatenation: string + string
-                if let (Value::String(a), Value::String(b)) = (lhs, rhs) {
-                    return match op {
-                        BinOp::Add => Ok(Value::String(format!("{}{}", a, b))),
-                        _ => Err("strings only support + and *".into()),
-                    };
+                // String concatenation: if either side is a string, stringify both sides
+                if matches!(op, BinOp::Add)
+                    && (matches!(lhs, Value::String(_)) || matches!(rhs, Value::String(_)))
+                {
+                    return Ok(Value::String(format!("{}{}", lhs, rhs)));
                 }
 
                 // String repetition: string * int or int * string
@@ -619,7 +698,7 @@ impl Interpreter {
         match &receiver {
             Value::Vector(_) => self.eval_vector_method(receiver_expr, receiver, method, args),
             Value::String(_) => self.eval_string_method(receiver, method, args),
-            Value::StructInstance { struct_name, fields } => {
+            Value::StructInstance { struct_name, .. } => {
                 // Look up the struct def to find the method
                 let def = self.env.get(struct_name.as_ref())
                     .cloned()
@@ -632,55 +711,10 @@ impl Interpreter {
                             .map(|(_, v)| v.clone())
                             .ok_or(format!("{} has no method '{}'", struct_name, method))?;
 
-                        // Call the method with `self` (the instance) as the first arg
-                        match method_val {
-                            Value::Func { params, body, name, tol_param } => {
-                                if args.len() + 1 != params.len() {
-                                    return Err(format!(
-                                        "{}.{}: expected {} args (besides self), got {}",
-                                        struct_name, method, params.len() - 1, args.len()
-                                    ));
-                                }
-
-                                // Track method call
-                                self.call_stack.push(format!("{}.{}", struct_name, method));
-
-                                self.env.push_scope();
-
-                                // Bind self as first param
-                                self.env.define(params[0].clone(), receiver);
-
-                                // Bind remaining params
-                                for (param, arg) in params[1..].iter().zip(args) {
-                                    self.env.define(param.clone(), arg);
-                                }
-
-                                if let Some(ref pname) = tol_param {
-                                    self.env.define(pname.as_ref().to_string(), Value::None);
-                                }
-
-                                let mut result = Value::Bool(false);
-                                for s in body.iter() {
-                                    match self.exec_stmt(s)? {
-                                        Some(Signal::Return(val)) => {
-                                            result = val;
-                                            break;
-                                        }
-                                        Some(Signal::Break) => {
-                                            self.env.pop_scope();
-                                            self.call_stack.pop();
-                                            return Err("break outside of loop".into());
-                                        }
-                                        None => {}
-                                    }
-                                }
-
-                                self.env.pop_scope();
-                                self.call_stack.pop();
-                                Ok(result)
-                            }
-                            _ => Err(format!("{}.{} is not a function", struct_name, method)),
-                        }
+                        let mut full_args = Vec::with_capacity(args.len() + 1);
+                        full_args.push(receiver);
+                        full_args.extend(args);
+                        self.call_value(method_val, full_args, None)
                     }
                     _ => Err(format!("{} is not a struct", struct_name)),
                 }
@@ -833,13 +867,7 @@ impl Interpreter {
     /// Write a mutated value back to the receiver variable.
     fn reassign_receiver(&mut self, receiver_expr: &Expr, new_val: Value) -> Result<(), String> {
         match receiver_expr {
-            Expr::Ident(name) => {
-                if !self.env.assign(name, new_val) {
-                    Err(format!("undefined variable: {}", name))
-                } else {
-                    Ok(())
-                }
-            }
+            Expr::Ident(name) => self.env.assign(name, new_val),
             _ => Err("cannot mutate a temporary value; assign to a variable first".into()),
         }
     }
