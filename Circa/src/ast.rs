@@ -1,29 +1,50 @@
 /// A complete Circa program is a list of statements.
 pub type Program = Vec<Stmt>;
 
+/// Type annotations in Circa.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeAnno {
+    Int,
+    Float,
+    Bool,
+    Str,
+    None,
+    /// Homogeneous vector: `[float]`, `[int]`, etc.
+    Vec(Box<TypeAnno>),
+    /// Callable: `fn(float, float) -> float`
+    Fn {
+        params: Vec<TypeAnno>,
+        ret: Box<TypeAnno>,
+    },
+    /// A user-defined struct type, referenced by name.
+    Named(String),
+}
+
 /// Statements
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    /// `let x = expr` or `let x = expr ~= tol_expr`
+    /// `let x = expr` or `const x: float = expr`
+    /// `mutable`: false for `const`, true for `let`
     Let {
         name: String,
+        type_anno: Option<TypeAnno>,
         value: Expr,
-        tolerance: Option<Expr>,
+        mutable: bool,
     },
 
-    /// `fn name(params) { body }` or `fn name(params) ~ident { body }`
-    /// When `tol_param` is Some, the caller's tolerance is injected as a variable
-    /// with that name and applied to the return value.
+    /// `fn name(x: float, y: float) ~tol -> float { body }`
+    /// Params are now (name, type). Return type defaults to None if omitted.
     FnDef {
         name: String,
-        params: Vec<String>,
+        params: Vec<(String, TypeAnno)>,
         body: Vec<Stmt>,
         tol_param: Option<String>,
+        return_type: TypeAnno,
     },
 
     StructDef {
         name: String,
-        fields: Vec<String>,
+        fields: Vec<(String, TypeAnno)>,
         methods: Vec<Stmt>,
     },
 
@@ -106,11 +127,13 @@ pub enum Expr {
         tolerance: Box<Expr>,
     },
 
-    /// Anonymous function expression: `fn(params) { body }` or `fn(params) ~ident { body }`
+    /// Anonymous function: `fn(x: float) -> float { body }`
+    /// Param types may be None when inferred from context (e.g. passed to a typed parameter).
     Lambda {
-        params: Vec<String>,
+        params: Vec<(String, Option<TypeAnno>)>,
         body: Vec<Stmt>,
         tol_param: Option<String>,
+        return_type: Option<TypeAnno>,
     },
 
     /// Vector literal: `[e1, e2, e3]`

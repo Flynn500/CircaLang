@@ -88,7 +88,7 @@ fn distance(x1, y1, x2, y2) {
     return sqrt(dx * dx + dy * dy) ~tol 0.001
 }
 
-let d = distance(0.0, 0.0, 3.0 ~= 0.1, 4.0 ~= 0.1)
+let d = distance(0.0, 0.0, 3.0 ~ 0.1, 4.0 ~ 0.1)
 print(d)    // 5.0 ~= ...
 ```
 
@@ -218,11 +218,11 @@ import math
 
 let x = 1.0
 
-print(sqrt(2.0) ~tol 0.0001)        // 1.4142135 ~= 0.0001
-print(sin(x) ~tol 0.01)             // 0.8333333 ~= 0.01
-print(cos(x) ~tol 0.001)            // 0.5403023 ~= 0.001
-print(exp(x) ~tol 0.0001)           // 2.718254 ~= 0.0001
-print(ln(2.7182818) ~tol 0.0001)    // 1.0000262 ~= 0.0001
+print(sqrt(2.0) ~ 0.0001)        // 1.4142135 ~ 0.0001
+print(sin(x) ~ 0.01)             // 0.8333333 ~ 0.01
+print(cos(x) ~ 0.001)            // 0.5403023 ~ 0.001
+print(exp(x) ~ 0.0001)           // 2.718254 ~ 0.0001
+print(ln(2.7182818) ~ 0.0001)    // 1.0000262 ~ 0.0001
 ```
 
 Looser tolerance = fewer iterations = faster results. The `sin(1.0) ~tol 0.01` call above only computes two Taylor terms because that's all it needs.

@@ -1,0 +1,26 @@
+fn mathm(a, b) {
+    let c = a * 0.1
+    let d = c * 25
+    let e = d * 0.5
+    return e * 0.1
+}
+
+let count = 0
+let max = 10000
+loop { 
+    mathm(count, count * 2)
+    count = count + 1
+    if count > max { break }
+}
+
+let a: int = 1
+fn foo(x) ~t -> float { return x } 
+    return x + a
+}
+
+const a: float = 1 ~ 0.1
+fn foo(x) ~t -> float { return x + a} 
+
+foo(0)
+a = 2
+foo(0)

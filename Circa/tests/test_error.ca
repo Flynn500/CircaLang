@@ -1,0 +1,9 @@
+fn divide(a, b) {
+    return a / b
+}
+
+fn average(x, y) {
+    return divide(x + y, 0)
+}
+
+let result = average(10, 20)

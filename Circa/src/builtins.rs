@@ -3,7 +3,7 @@ use crate::value::{NativeFn, Value};
 
 /// Return the list of native builtins that belong to a given module.
 /// Unknown module names return an empty slice (user files have no native builtins).
-fn builtins_for_module(module: &str) -> &'static [(&'static str, usize, NativeFn, bool)] {
+pub fn builtins_for_module(module: &str) -> &'static [(&'static str, usize, NativeFn, bool)] {
     match module {
         "prelude" => &[
             ("tolerance", 1, builtin_tolerance, false),

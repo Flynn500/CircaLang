@@ -1,6 +1,8 @@
 use std::fmt;
-use crate::ast::Stmt;
 use std::rc::Rc;
+use crate::ast::Stmt;
+
+
 /// Signature for a native (Rust-implemented) Circa function.
 /// The second argument is the caller-provided tolerance, if any.
 pub type NativeFn = fn(&[Value], Option<f64>) -> Result<Value, String>;
@@ -32,11 +34,12 @@ pub enum Value {
         func: NativeFn,
         guarantees_tol: bool,
     },
+
     /// A struct definition (blueprint): holds field names and methods.
     StructDef {
         name: Rc<str>,
         fields: Rc<[String]>,
-        methods: Rc<[(String, Value)]>,  // (method_name, Value::Func)
+        methods: Rc<[(String, Value)]>,
     },
     /// A struct instance: holds the struct name and field values.
     StructInstance {
@@ -145,6 +148,7 @@ impl fmt::Display for Value {
             Value::String(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", if *b { "True" } else { "False" }),
             Value::Func { name, .. } => write!(f, "<fn {}>", name),
+            Value::NativeFunc { name, .. } => write!(f, "<native fn {}>", name),
             Value::StructDef { name, .. } => write!(f, "<struct {}>", name),
             Value::StructInstance { struct_name, fields } => {
                 let parts: Vec<String> = fields
@@ -153,7 +157,6 @@ impl fmt::Display for Value {
                     .collect();
                 write!(f, "{} {{ {} }}", struct_name, parts.join(", "))
             },
-            Value::NativeFunc { name, .. } => write!(f, "<native fn {}>", name),
             Value::Vector(elems) => {
                 let parts: Vec<String> = elems.iter().map(|v| v.to_string()).collect();
                 write!(f, "[{}]", parts.join(", "))

@@ -15,13 +15,18 @@ enum Signal {
 
 pub struct Interpreter {
     pub env: Env,
+    /// Lightweight call stack for error reporting — just function names.
+    pub call_stack: Vec<String>,
 }
 
 impl Interpreter {
     /// Create an interpreter with no builtins registered.
     /// Use this when the resolver handles builtin registration.
     pub fn new() -> Self {
-        Interpreter { env: Env::new() }
+        Interpreter {
+            env: Env::new(),
+            call_stack: Vec::new(),
+        }
     }
 
     /// Run a full program.
@@ -39,33 +44,8 @@ impl Interpreter {
     /// Execute a statement. Returns Some(Signal) if flow was interrupted.
     fn exec_stmt(&mut self, stmt: &Stmt) -> Result<Option<Signal>, String> {
         match stmt {
-            Stmt::Let { name, value, tolerance } => {
-                // If value is a Call and we have a tolerance, pass tol into the call
-                // Evaluate the value expression (calls handle their own ~tol)
+            Stmt::Let { name, value, .. } => {
                 let result = self.eval_expr(value)?;
-
-                // Apply ~ tolerance to the stored variable
-                let result = if let Some(tol_expr) = tolerance {
-                    let tol_val = self.eval_expr(tol_expr)?;
-                    match tol_val {
-                        Value::None => result,
-                        _ => {
-                            let tol_f32 = tol_val
-                                .as_f64()
-                                .ok_or("tolerance must be a number or None".to_string())?;
-                            match result {
-                                Value::Number { val, .. } => Value::number_with_tol(val, tol_f32),
-                                Value::Integer(i) => Value::number_with_tol(i as f64, tol_f32),
-                                other => return Err(format!(
-                                    "cannot apply tolerance to {}", other
-                                )),
-                            }
-                        }
-                    }
-                } else {
-                    result
-                };
-
                 self.env.define(name.clone(), result);
                 Ok(None)
             }
@@ -78,10 +58,11 @@ impl Interpreter {
                 Ok(None)
             }
 
-            Stmt::FnDef { name, params, body, tol_param } => {
+            Stmt::FnDef { name, params, body, tol_param, .. } => {
+                let param_names: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
                 let func = Value::Func {
                     name: Rc::from(name.as_str()),
-                    params: Rc::from(params.as_slice()),
+                    params: Rc::from(param_names.as_slice()),
                     body: Rc::from(body.as_slice()),
                     tol_param: tol_param.as_deref().map(Rc::from),
                 };
@@ -145,10 +126,11 @@ impl Interpreter {
                 let mut method_values = Vec::new();
                 for m in methods {
                     match m {
-                        Stmt::FnDef { name, params, body, tol_param } => {
+                        Stmt::FnDef { name, params, body, tol_param, .. } => {
+                            let param_names: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
                             let func = Value::Func {
                                 name: Rc::from(name.as_str()),
-                                params: Rc::from(params.as_slice()),
+                                params: Rc::from(param_names.as_slice()),
                                 body: Rc::from(body.as_slice()),
                                 tol_param: tol_param.as_deref().map(Rc::from),
                             };
@@ -157,9 +139,10 @@ impl Interpreter {
                         _ => return Err("struct body must contain only field declarations and methods".into()),
                     }
                 }
+                let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
                 let def = Value::StructDef {
                     name: Rc::from(name.as_str()),
-                    fields: Rc::from(fields.as_slice()),
+                    fields: Rc::from(field_names.as_slice()),
                     methods: Rc::from(method_values),
                 };
                 self.env.define(name.clone(), def);
@@ -279,10 +262,11 @@ impl Interpreter {
                 self.eval_call(func, args, caller_tol)
             }
 
-            Expr::Lambda { params, body, tol_param } => {
+            Expr::Lambda { params, body, tol_param, .. } => {
+                let param_names: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
                 Ok(Value::Func {
                     name: Rc::from("<lambda>"),
-                    params: Rc::from(params.as_slice()),
+                    params: Rc::from(param_names.as_slice()),
                     body: Rc::from(body.as_slice()),
                     tol_param: tol_param.as_deref().map(Rc::from),
                 })
@@ -362,6 +346,16 @@ impl Interpreter {
             .map(|a| self.eval_expr(a))
             .collect::<Result<_, _>>()?;
 
+        self.call_value(func, args, caller_tol)
+    }
+
+    /// Call a function value with pre-evaluated arguments.
+    fn call_value(
+        &mut self,
+        func: Value,
+        args: Vec<Value>,
+        caller_tol: Option<f64>,
+    ) -> Result<Value, String> {
         match func {
             Value::Func { params, body, name, tol_param } => {
                 if args.len() != params.len() {
@@ -377,6 +371,9 @@ impl Interpreter {
                         name
                     ));
                 }
+
+                // Track call stack for error reporting
+                self.call_stack.push(name.to_string());
 
                 self.env.push_scope();
 
@@ -403,6 +400,8 @@ impl Interpreter {
                             break;
                         }
                         Some(Signal::Break) => {
+                            self.env.pop_scope();
+                            self.call_stack.pop();
                             return Err("break outside of loop".into());
                         }
                         None => {}
@@ -410,6 +409,7 @@ impl Interpreter {
                 }
 
                 self.env.pop_scope();
+                self.call_stack.pop();
 
                 // Tag the return value with the caller's tolerance.
                 if tol_param.is_some() {
@@ -438,6 +438,9 @@ impl Interpreter {
                     ));
                 }
 
+                // Track native calls too
+                self.call_stack.push(name.to_string());
+
                 let mut result = func(&args, caller_tol)?;
 
                 if guarantees_tol {
@@ -448,6 +451,8 @@ impl Interpreter {
                         };
                     }
                 }
+
+                self.call_stack.pop();
 
                 Ok(result)
             }
@@ -637,6 +642,9 @@ impl Interpreter {
                                     ));
                                 }
 
+                                // Track method call
+                                self.call_stack.push(format!("{}.{}", struct_name, method));
+
                                 self.env.push_scope();
 
                                 // Bind self as first param
@@ -659,6 +667,8 @@ impl Interpreter {
                                             break;
                                         }
                                         Some(Signal::Break) => {
+                                            self.env.pop_scope();
+                                            self.call_stack.pop();
                                             return Err("break outside of loop".into());
                                         }
                                         None => {}
@@ -666,6 +676,7 @@ impl Interpreter {
                                 }
 
                                 self.env.pop_scope();
+                                self.call_stack.pop();
                                 Ok(result)
                             }
                             _ => Err(format!("{}.{} is not a function", struct_name, method)),
@@ -699,7 +710,7 @@ impl Interpreter {
                 self.reassign_receiver(receiver_expr, Value::Vector(elems))?;
                 Ok(Value::Bool(false))
             }
-            "append" => {
+            "extend" => {
                 if args.len() != 1 {
                     return Err("append: expected 1 argument".into());
                 }
@@ -743,6 +754,77 @@ impl Interpreter {
                     _ => unreachable!(),
                 };
                 Ok(Value::number(elems.len()as f64))
+            }
+            "map" => {
+                if args.len() != 1 {
+                    return Err("map: expected 1 argument (a function)".into());
+                }
+                let elems = match receiver {
+                    Value::Vector(v) => v,
+                    _ => unreachable!(),
+                };
+                let func = args.into_iter().next().unwrap();
+                let mut result = Vec::with_capacity(elems.len());
+                for elem in elems {
+                    let mapped = self.call_value(func.clone(), vec![elem], None)?;
+                    result.push(mapped);
+                }
+                Ok(Value::Vector(result))
+            }
+            "fold" => {
+                if args.len() != 2 {
+                    return Err("fold: expected 2 arguments (initial value, function)".into());
+                }
+                let elems = match receiver {
+                    Value::Vector(v) => v,
+                    _ => unreachable!(),
+                };
+                let mut args_iter = args.into_iter();
+                let mut acc = args_iter.next().unwrap();
+                let func = args_iter.next().unwrap();
+                for elem in elems {
+                    acc = self.call_value(func.clone(), vec![acc, elem], None)?;
+                }
+                Ok(acc)
+            }
+            "filter" => {
+                if args.len() != 1 {
+                    return Err("filter: expected 1 argument (a function)".into());
+                }
+                let elems = match receiver {
+                    Value::Vector(v) => v,
+                    _ => unreachable!(),
+                };
+                let func = args.into_iter().next().unwrap();
+                let mut result = Vec::new();
+                for elem in elems {
+                    let keep = self.call_value(func.clone(), vec![elem.clone()], None)?;
+                    let keep_bool = keep.as_bool().ok_or(
+                        "filter: predicate must return a bool-like value".to_string(),
+                    )?;
+                    if keep_bool {
+                        result.push(elem);
+                    }
+                }
+                Ok(Value::Vector(result))
+            }
+            "zip" => {
+                if args.len() != 1 {
+                    return Err("zip: expected 1 argument (a vector)".into());
+                }
+                let elems = match receiver {
+                    Value::Vector(v) => v,
+                    _ => unreachable!(),
+                };
+                let other = match args.into_iter().next().unwrap() {
+                    Value::Vector(v) => v,
+                    other => return Err(format!("zip: expected a vector, got {}", other)),
+                };
+                let result = elems.into_iter()
+                    .zip(other)
+                    .map(|(a, b)| Value::Vector(vec![a, b]))
+                    .collect();
+                Ok(Value::Vector(result))
             }
             other => Err(format!("vector has no method '{}'", other)),
         }

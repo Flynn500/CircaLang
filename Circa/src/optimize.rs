@@ -9,10 +9,11 @@ pub fn optimize(program: Program) -> Program {
 
 fn optimize_stmt(stmt: Stmt) -> Stmt {
     match stmt {
-        Stmt::Let { name, value, tolerance } => Stmt::Let {
+        Stmt::Let { name, type_anno, value, mutable } => Stmt::Let {
             name,
+            type_anno,
             value: optimize_expr(value),
-            tolerance: tolerance.map(optimize_expr),
+            mutable,
         },
         Stmt::Assign { name, value } => Stmt::Assign {
             name,
@@ -26,11 +27,12 @@ fn optimize_stmt(stmt: Stmt) -> Stmt {
             then_body: eliminate_dead_code(then_body.into_iter().map(optimize_stmt).collect()),
             else_body: else_body.map(|eb| eliminate_dead_code(eb.into_iter().map(optimize_stmt).collect()))
         },
-        Stmt::FnDef { name, params, body, tol_param } => Stmt::FnDef {
+        Stmt::FnDef { name, params, body, tol_param, return_type } => Stmt::FnDef {
             name,
             params,
             body: eliminate_dead_code(body.into_iter().map(optimize_stmt).collect()),
             tol_param,
+            return_type,
         },
         Stmt::StructDef { name, fields, methods } => Stmt::StructDef {
             name,
@@ -75,10 +77,11 @@ fn recurse_expr(expr: Expr) -> Expr {
             value: Box::new(optimize_expr(*value)),
             tolerance: Box::new(optimize_expr(*tolerance)),
         },
-        Expr::Lambda { params, body, tol_param } => Expr::Lambda {
+        Expr::Lambda { params, body, tol_param, return_type } => Expr::Lambda {
             params,
             body: eliminate_dead_code(body.into_iter().map(optimize_stmt).collect()),
             tol_param,
+            return_type,
         },
         Expr::StructInit { name, fields } => Expr::StructInit {
             name,

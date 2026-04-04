@@ -1,5 +1,14 @@
 let a = 0.1 ~ 0.5
 let b = 0.2 ~ 0.5
-print(a == b)
-print(a)
-print(b)
+
+
+import math
+let foo = fn (x) { return x + b }
+let area = integrate(foo, 0.1, 1.0) ~ 0.1
+print(area)
+
+b = -10
+let area = integrate(foo, 0.1, 1.0) ~ 0.1
+print(area)
+
+

@@ -25,6 +25,8 @@ pub enum Token {
     // Keywords
     #[token("let")]
     Let,
+    #[token("const")]
+    Const,
     #[token("fn")]
     Fn,
     #[token("if")]
@@ -51,6 +53,16 @@ pub enum Token {
     New,
     #[token("struct")]
     Struct,
+
+    // Type keywords
+    #[token("int")]
+    TyInt,
+    #[token("float")]
+    TyFloat,
+    #[token("bool")]
+    TyBool,
+    #[token("string")]
+    TyString,
 
     // Literals
     #[regex(r"[0-9]+[eE][+-]?[0-9]+", |lex| lex.slice().parse::<f64>().ok().map(F64), priority = 3)]
@@ -130,6 +142,10 @@ pub enum Token {
     Comma,
     #[token(".")]
     Dot,
+    #[token(":")]
+    Colon,
+    #[token("->")]
+    Arrow,
 
     // Newlines are significant (statement terminators)
     #[token("\n")]
@@ -163,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_function_def() {
-        let input = "fn find_root(f, lo, hi)";
+        let input = "fn find_root(f: float, lo: float) -> float";
         let tokens: Vec<_> = Token::lexer(input)
             .map(|t| t.unwrap())
             .collect();
@@ -173,11 +189,15 @@ mod tests {
             Token::Ident("find_root".into()),
             Token::LParen,
             Token::Ident("f".into()),
+            Token::Colon,
+            Token::TyFloat,
             Token::Comma,
             Token::Ident("lo".into()),
-            Token::Comma,
-            Token::Ident("hi".into()),
+            Token::Colon,
+            Token::TyFloat,
             Token::RParen,
+            Token::Arrow,
+            Token::TyFloat,
         ]);
     }
 
@@ -230,5 +250,53 @@ mod tests {
             .collect();
 
         assert_eq!(tokens, vec![Token::StringLit("hello world".into())]);
+    }
+
+    #[test]
+    fn test_const_binding() {
+        let input = "const a: float = 1.0 ~ 0.1";
+        let tokens: Vec<_> = Token::lexer(input)
+            .map(|t| t.unwrap())
+            .collect();
+
+        assert_eq!(tokens, vec![
+            Token::Const,
+            Token::Ident("a".into()),
+            Token::Colon,
+            Token::TyFloat,
+            Token::Assign,
+            Token::Number(F64(1.0)),
+            Token::Tilde,
+            Token::Number(F64(0.1)),
+        ]);
+    }
+
+    #[test]
+    fn test_callable_type() {
+        let input = "fn diff(f: fn(float) -> float, x: float) -> float";
+        let tokens: Vec<_> = Token::lexer(input)
+            .map(|t| t.unwrap())
+            .collect();
+
+        assert_eq!(tokens, vec![
+            Token::Fn,
+            Token::Ident("diff".into()),
+            Token::LParen,
+            Token::Ident("f".into()),
+            Token::Colon,
+            Token::Fn,
+            Token::LParen,
+            Token::TyFloat,
+            Token::RParen,
+            Token::Arrow,
+            Token::TyFloat,
+            Token::Comma,
+            Token::Ident("x".into()),
+            Token::Colon,
+            Token::TyFloat,
+            Token::RParen,
+            Token::Arrow,
+            Token::TyFloat,
+        ]);
     }
 }

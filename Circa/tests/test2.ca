@@ -1,3 +1,6 @@
-let a = 0.1
-let b = 0.2
-print(a == b)
+import math
+
+let area = integrate(fn(x) { return ln(x) }, 0.1, 1.0) ~ 0.1
+
+print(area)
+

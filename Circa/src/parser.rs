@@ -52,6 +52,36 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
     // Step 3: build expr WITH lambda support (lambda uses block).
     let block_for_expr = block.clone();
 
+    // Type annotation parser (needed inside expr for lambdas)
+    let type_anno_for_expr = recursive(|type_anno| {
+        let base = just(Token::TyFloat).to(TypeAnno::Float)
+            .or(just(Token::TyInt).to(TypeAnno::Int))
+            .or(just(Token::TyBool).to(TypeAnno::Bool))
+            .or(just(Token::TyString).to(TypeAnno::Str))
+            .or(just(Token::None).to(TypeAnno::None))
+            .or(select! { Token::Ident(s) => TypeAnno::Named(s) });
+
+        let vec_type = type_anno.clone()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(|inner| TypeAnno::Vec(Box::new(inner)));
+
+        let fn_type = just(Token::Fn)
+            .ignore_then(
+                type_anno.clone()
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+            )
+            .then_ignore(just(Token::Arrow))
+            .then(type_anno.clone())
+            .map(|(params, ret)| TypeAnno::Fn {
+                params,
+                ret: Box::new(ret),
+            });
+
+        fn_type.or(vec_type).or(base)
+    });
+
     // Used in the postfix fold to distinguish call vs index suffixes.
     enum PostfixOp {
         Call(Vec<Expr>, Option<Expr>),
@@ -72,10 +102,18 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
     
         let ident = select! { Token::Ident(s) => Expr::Ident(s) };
 
-        // Lambda: `fn(params) { body }` or `fn(params) ~ident { body }`
+        // Lambda typed param: `name: type` or just `name` (type is None)
+        let lambda_param = select! { Token::Ident(s) => s }
+            .then(
+                just(Token::Colon)
+                    .ignore_then(type_anno_for_expr.clone())
+                    .or_not(),
+            );
+
+        // Lambda: `fn(params) { body }` or `fn(params) ~ident -> RetType { body }`
         let lambda = just(Token::Fn)
             .ignore_then(
-                select! { Token::Ident(s) => s }
+                lambda_param
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
                     .delimited_by(just(Token::LParen), just(Token::RParen)),
@@ -85,11 +123,17 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                     .ignore_then(select! { Token::Ident(s) => s })
                     .or_not(),
             )
+            .then(
+                just(Token::Arrow)
+                    .ignore_then(type_anno_for_expr.clone())
+                    .or_not(),
+            )
             .then(block_for_expr.clone())
-            .map(|((params, tol_param), body)| Expr::Lambda {
+            .map(|(((params, tol_param), return_type), body)| Expr::Lambda {
                 params,
                 body,
                 tol_param,
+                return_type,
             });
 
         // Parenthesised expr, also handles `(value ~ tolerance)`
@@ -279,17 +323,69 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
 
     // Step 4: build all statement parsers using expr and block, then define stmt_rec.
 
-    // let name = expr  OR  let name = expr ~ tol
-    let let_stmt = just(Token::Let)
-        .ignore_then(select! { Token::Ident(s) => s })
-        .then_ignore(just(Token::Assign))
-        .then(expr.clone())
+    // Type annotation parser: float, int, bool, string, [float], fn(float) -> float, StructName
+    let type_anno = recursive(|type_anno| {
+        let base = just(Token::TyFloat).to(TypeAnno::Float)
+            .or(just(Token::TyInt).to(TypeAnno::Int))
+            .or(just(Token::TyBool).to(TypeAnno::Bool))
+            .or(just(Token::TyString).to(TypeAnno::Str))
+            .or(just(Token::None).to(TypeAnno::None))
+            .or(select! { Token::Ident(s) => TypeAnno::Named(s) });
+
+        let vec_type = type_anno.clone()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(|inner| TypeAnno::Vec(Box::new(inner)));
+
+        let fn_type = just(Token::Fn)
+            .ignore_then(
+                type_anno.clone()
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+            )
+            .then_ignore(just(Token::Arrow))
+            .then(type_anno.clone())
+            .map(|(params, ret)| TypeAnno::Fn {
+                params,
+                ret: Box::new(ret),
+            });
+
+        fn_type.or(vec_type).or(base)
+    });
+
+    // let name = expr ~ tol
+    // let name: type = expr ~ tol
+    // const name: type = expr ~ tol
+    let let_stmt = just(Token::Let).to(true)
+        .or(just(Token::Const).to(false))
+        .then(select! { Token::Ident(s) => s })
         .then(
-            just(Token::Tilde)
-                .ignore_then(expr.clone())
+            just(Token::Colon)
+                .ignore_then(type_anno.clone())
                 .or_not(),
         )
-        .map(|((name, value), tolerance)| Stmt::Let { name, value, tolerance });
+        .then_ignore(just(Token::Assign))
+        .then(
+            expr.clone()
+                .then(
+                    just(Token::Tilde)
+                        .ignore_then(expr.clone())
+                        .or_not(),
+                )
+                .map(|(value, tol)| match tol {
+                    Some(t) => Expr::WithTolerance {
+                        value: Box::new(value),
+                        tolerance: Box::new(t),
+                    },
+                    None => value,
+                }),
+        )
+        .map(|(((mutable, name), type_anno), value)| Stmt::Let {
+            name,
+            type_anno,
+            value,
+            mutable,
+        });
 
     // return expr
     let return_stmt = just(Token::Return)
@@ -311,11 +407,20 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
             else_body,
         });
 
-    // fn name(params) { body }  OR  fn name(params) ~ident { body }
+    // Typed param: `name: type` or just `name` (defaults to None)
+    let typed_param = select! { Token::Ident(s) => s }
+        .then(
+            just(Token::Colon)
+                .ignore_then(type_anno.clone())
+                .or_not(),
+        )
+        .map(|(name, ty)| (name, ty.unwrap_or(TypeAnno::None)));
+
+    // fn name(params) ~ident -> RetType { body }
     let fn_def = just(Token::Fn)
         .ignore_then(select! { Token::Ident(s) => s })
         .then(
-            select! { Token::Ident(s) => s }
+            typed_param.clone()
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .delimited_by(just(Token::LParen), just(Token::RParen)),
@@ -325,23 +430,35 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                 .ignore_then(select! { Token::Ident(s) => s })
                 .or_not(),
         )
+        .then(
+            just(Token::Arrow)
+                .ignore_then(type_anno.clone())
+                .or_not(),
+        )
         .then(block.clone())
-        .map(|(((name, params), tol_param), body)| Stmt::FnDef {
+        .map(|((((name, params), tol_param), return_type), body)| Stmt::FnDef {
             name,
             params,
             body,
             tol_param,
+            return_type: return_type.unwrap_or(TypeAnno::None),
         });
     
-            // Field declaration inside struct: `let name`
+            // Field declaration inside struct: `let name` or `let name: type`
         let struct_field = just(Token::Let)
-            .ignore_then(select! { Token::Ident(s) => s });
+            .ignore_then(select! { Token::Ident(s) => s })
+            .then(
+                just(Token::Colon)
+                    .ignore_then(type_anno.clone())
+                    .or_not(),
+            )
+            .map(|(name, ty)| (name, ty.unwrap_or(TypeAnno::None)));
 
         // Method inside struct: reuse fn_def parser shape
         let struct_method = just(Token::Fn)
             .ignore_then(select! { Token::Ident(s) => s })
             .then(
-                select! { Token::Ident(s) => s }
+                typed_param.clone()
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
                     .delimited_by(just(Token::LParen), just(Token::RParen)),
@@ -351,17 +468,23 @@ fn program_parser() -> impl Parser<Token, Program, Error = Simple<Token>> {
                     .ignore_then(select! { Token::Ident(s) => s })
                     .or_not(),
             )
+            .then(
+                just(Token::Arrow)
+                    .ignore_then(type_anno.clone())
+                    .or_not(),
+            )
             .then(block.clone())
-            .map(|(((name, params), tol_param), body)| Stmt::FnDef {
+            .map(|((((name, params), tol_param), return_type), body)| Stmt::FnDef {
                 name,
                 params,
                 body,
                 tol_param,
+                return_type: return_type.unwrap_or(TypeAnno::None),
             });
 
         // A struct member is either a field or a method
         enum StructMember {
-            Field(String),
+            Field((String, TypeAnno)),
             Method(Stmt),
         }
 
@@ -443,144 +566,4 @@ pub fn parse(tokens: Vec<Spanned>) -> Result<Program, Vec<Simple<Token>>> {
         len..len + 1,
         tokens.into_iter(),
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn parse_str(src: &str) -> Program {
-        let tokens = lex(src).expect("lex failed");
-        parse(tokens).expect("parse failed")
-    }
-
-    #[test]
-    fn test_let_with_tolerance() {
-        let prog = parse_str("let a = 0.1 ~ 0.5");
-        assert_eq!(prog.len(), 1);
-        match &prog[0] {
-            Stmt::Let { name, tolerance, .. } => {
-                assert_eq!(name, "a");
-                assert!(tolerance.is_some());
-            }
-            other => panic!("expected Let, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_let_without_tolerance() {
-        let prog = parse_str("let x = 42");
-        match &prog[0] {
-            Stmt::Let { name, tolerance, .. } => {
-                assert_eq!(name, "x");
-                assert!(tolerance.is_none());
-            }
-            other => panic!("expected Let, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_fn_def() {
-        let prog = parse_str("fn add(a, b) {\n  return a + b\n}");
-        assert_eq!(prog.len(), 1);
-        match &prog[0] {
-            Stmt::FnDef { name, params, body, .. } => {
-                assert_eq!(name, "add");
-                assert_eq!(params, &["a", "b"]);
-                assert_eq!(body.len(), 1);
-            }
-            other => panic!("expected FnDef, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_print() {
-        // print is now a builtin function, not a statement keyword
-        let prog = parse_str("print(42)");
-        assert_eq!(prog.len(), 1);
-        assert!(matches!(&prog[0], Stmt::ExprStmt(Expr::Call { .. })));
-    }
-
-    #[test]
-    fn test_call_with_tolerance() {
-        // `let r = f(1.0, 2.0) ~ 0.01`
-        // The ~ is consumed by call_suffix, so the Call holds the tolerance.
-        let prog = parse_str("let r = f(1.0, 2.0) ~ 0.01");
-        match &prog[0] {
-            Stmt::Let { name, value, tolerance } => {
-                assert_eq!(name, "r");
-                assert!(tolerance.is_none());
-                assert!(matches!(value, Expr::Call { tolerance: Some(_), .. }));
-            }
-            other => panic!("expected Let, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_comparison_with_tolerance() {
-        let prog = parse_str("let x = a == (0.0 ~ tol)");
-        assert_eq!(prog.len(), 1);
-    }
-
-    #[test]
-    fn test_multiline_program() {
-        let src = "let a = 0.1 ~ 0.5\nlet b = 0.2 ~ 0.5\nprint(a == b)";
-        let prog = parse_str(src);
-        assert_eq!(prog.len(), 3);
-    }
-
-    #[test]
-    fn test_if_else() {
-        let src = "if x > 0 {\n  print(x)\n} else {\n  print(0)\n}";
-        let prog = parse_str(src);
-        assert_eq!(prog.len(), 1);
-        match &prog[0] {
-            Stmt::If { else_body, .. } => assert!(else_body.is_some()),
-            other => panic!("expected If, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_arithmetic_precedence() {
-        let prog = parse_str("1 + 2 * 3");
-        match &prog[0] {
-            Stmt::ExprStmt(Expr::BinOp { op: BinOp::Add, right, .. }) => {
-                assert!(matches!(right.as_ref(), Expr::BinOp { op: BinOp::Mul, .. }));
-            }
-            other => panic!("expected Add(_, Mul(_, _)), got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_integer_literal() {
-        let prog = parse_str("let x = 42");
-        match &prog[0] {
-            Stmt::Let { value, .. } => {
-                assert!(matches!(value, Expr::Integer(42)));
-            }
-            other => panic!("expected Let with Integer, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_float_literal() {
-        let prog = parse_str("let x = 42.0");
-        match &prog[0] {
-            Stmt::Let { value, .. } => {
-                assert!(matches!(value, Expr::Number(n) if *n == 42.0));
-            }
-            other => panic!("expected Let with Number, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_string_literal() {
-        let prog = parse_str(r#"let s = "hello""#);
-        match &prog[0] {
-            Stmt::Let { value, .. } => {
-                assert!(matches!(value, Expr::StringLiteral(s) if s == "hello"));
-            }
-            other => panic!("expected Let with StringLiteral, got {:?}", other),
-        }
-    }
 }

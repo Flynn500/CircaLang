@@ -1,9 +1,11 @@
-let v = [1.0 ~ 0.1, 2.0, 3.0]
-let x = v[0]
-print(x)
-print(len(v))
-print(mean(v))
+let v = [1.0 ~ 0.1, 2.0 ~ 0.1, 3.0 ~ 0.1] 
+print(v)
 
+let v2 = v.map(fn(x) { return x * x } )
+print(v2)
 
+let z = v.zip(v2)
+print(z)
 
-
+let sum = z.fold(0, fn(acc, pair) { return acc + pair[0] + pair[1] })
+print(sum)
